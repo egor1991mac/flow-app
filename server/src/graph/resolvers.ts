@@ -9,6 +9,9 @@ import { mutationTaskSwitchResolver } from "./task/mutation-task-switch/mutation
 import { mutationTaskStartResolver } from "./task/mutation-task-start/mutation-task-start.resolver.ts";
 import { mutationTaskMergeResolver } from "./task/mutation-task-merge/mutation-task-merge.resolver.ts";
 import { mutationTaskFinishResolver } from "./task/mutation-task-finish/mutation-task-finish.resolver.ts";
+import { mutationTaskLaunchAgentResolver } from "./task/mutation-task-launch-agent/mutation-task-launch-agent.resolver.ts";
+import { mutationTaskCommitResolver } from "./task/mutation-task-commit/mutation-task-commit.resolver.ts";
+import { mutationTaskCreateMrResolver } from "./task/mutation-task-create-mr/mutation-task-create-mr.resolver.ts";
 import { queryGlobalStagesResolver } from "./stage/query-global-stages/query-global-stages.resolver.ts";
 import { mutationStageSetResolver } from "./stage/mutation-stage-set/mutation-stage-set.resolver.ts";
 import { mutationStageApproveResolver } from "./stage/mutation-stage-approve/mutation-stage-approve.resolver.ts";
@@ -30,6 +33,9 @@ const operations: Array<{ Query?: Record<string, unknown>; Mutation?: Record<str
   mutationTaskStartResolver,
   mutationTaskMergeResolver,
   mutationTaskFinishResolver,
+  mutationTaskLaunchAgentResolver,
+  mutationTaskCommitResolver,
+  mutationTaskCreateMrResolver,
   queryGlobalStagesResolver,
   mutationStageSetResolver,
   mutationStageApproveResolver,

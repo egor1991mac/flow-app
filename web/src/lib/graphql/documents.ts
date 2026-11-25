@@ -249,6 +249,33 @@ export const MUTATION_FINISH_TASK = gql`
   }
 `;
 
+export const MUTATION_LAUNCH_AGENT = gql`
+  ${INVOKE_FIELDS}
+  mutation LaunchAgent($id: String!) {
+    launchAgent(id: $id) {
+      ...InvokeFields
+    }
+  }
+`;
+
+export const MUTATION_COMMIT_TASK = gql`
+  ${INVOKE_FIELDS}
+  mutation CommitTask($id: String!, $subject: String) {
+    commitTask(id: $id, subject: $subject) {
+      ...InvokeFields
+    }
+  }
+`;
+
+export const MUTATION_CREATE_TASK_MR = gql`
+  ${INVOKE_FIELDS}
+  mutation CreateTaskMr($id: String!) {
+    createTaskMr(id: $id) {
+      ...InvokeFields
+    }
+  }
+`;
+
 export const MUTATION_SET_STAGE = gql`
   ${INVOKE_FIELDS}
   mutation SetStage($input: StageInput!) {

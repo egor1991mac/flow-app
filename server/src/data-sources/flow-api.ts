@@ -13,6 +13,7 @@ import {
   readStages,
 } from "../../../flow-core/src/store.ts";
 import { branchName, cleanSummary } from "../../../flow-core/src/naming.ts";
+import { repoWebUrl } from "../../../flow-core/src/docs.ts";
 import { intakeId, typeKind } from "../../../flow-core/src/intake.ts";
 import {
   issueField,
@@ -105,13 +106,6 @@ export function tailJsonl<T>(file: string, n: number): T[] {
     .map((l) => JSON.parse(l) as T);
 }
 
-export function webUrl(remote: string | null): string | null {
-  if (!remote) return null;
-  const m = /^(?:git@|ssh:\/\/git@|https?:\/\/)([^:/]+)[:/](.+)$/.exec(remote.trim());
-  if (!m) return null;
-  return `https://${m[1]}/${m[2].replace(/\.git$/, "")}`;
-}
-
 export interface BranchRow {
   repo: string;
   branch: string;
@@ -143,7 +137,7 @@ export function taskBranches(task: {
           gitAdapter.branchCreatedFrom(clone, task.branch);
     const rawBase = stored ?? created;
     const base = rawBase && rawBase !== "HEAD" ? rawBase.replace(/^origin\//, "") : null;
-    const web = exists ? webUrl(gitAdapter.remoteUrl(clone)) : null;
+    const web = exists ? repoWebUrl(gitAdapter.remoteUrl(clone)) : null;
     return {
       repo,
       branch,

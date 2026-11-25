@@ -11,7 +11,7 @@ import { createPlan, featureAddPlan, reposToAddToFeature, taskDirtyFiles } from 
 import { allocatePorts, writeEnv, renderCompose } from "./stack.ts";
 import { mergePrecheck, finishGates, setStageStatus, approveStage } from "./gates.ts";
 import { intakeId, parentDecision } from "./intake.ts";
-import { writeSpec, writeAgents } from "./docs.ts";
+import { writeSpec, writeAgents, repoWebUrl } from "./docs.ts";
 
 export interface CliDeps {
   metaDir: string;
@@ -203,6 +203,76 @@ function applyBffPatch(ws: string, config: Config, deps: CliDeps): void {
   if (r.status !== 0) die(deps, `cannot apply bff-https.patch: ${(r.stderr ?? "").trim()}`);
 }
 
+function repoPath(config: Config, ws: string, repo: string): string | null {
+  const local = path.join(ws, repo);
+  if (fs.existsSync(local)) return local;
+  const main = path.join(config.mainRoot, repo);
+  return fs.existsSync(main) ? main : null;
+}
+
+function agentWorkdir(task: Task, config: Config): string {
+  for (const repo of task.repos) {
+    const dir = repoPath(config, task.workspacePath, repo);
+    if (dir) return dir;
+  }
+  return task.workspacePath;
+}
+
+function branchLinks(deps: CliDeps, config: Config, repos: string[], ws: string, branch: string): string[] {
+  const links: string[] = [];
+  for (const repo of repos) {
+    const dir = repoPath(config, ws, repo);
+    const url = dir ? repoWebUrl(deps.git.remoteUrl(dir)) : null;
+    if (url) links.push(`  ${repo}: ${url}/-/tree/${branch}`);
+  }
+  return links;
+}
+
+function agentPrompt(deps: CliDeps, task: Task, feature: Task | null): string {
+  const config = readConfig(deps.metaDir);
+  const ws = task.workspacePath;
+  const repos = task.repos.map((r) => {
+    const dir = repoPath(config, ws, r);
+    return dir ? `${r} (${dir})` : r;
+  });
+  const lines = [
+    `Ты в задаче ${task.id} (${task.type}): ${task.titleRu}`,
+    `Задача: https://youtrack.realt.by/issue/${task.id}`,
+    `Рабочая копия: ${ws}`,
+    `Ветка задачи \`${task.branch}\`, репозитории: ${repos.join(", ")}`,
+    ...branchLinks(deps, config, task.repos, ws, task.branch),
+  ];
+  if (task.parentId) {
+    const bases = Object.values(task.bases ?? {}).filter(Boolean);
+    const parentBranches = [...new Set([...(feature ? [feature.branch] : []), ...bases])];
+    lines.push(feature ? `Фича ${feature.id}: ветка \`${feature.branch}\`, папка ${feature.workspacePath}` : `Фича ${task.parentId} вне реестра: https://youtrack.realt.by/issue/${task.parentId}`);
+    for (const branch of parentBranches) {
+      lines.push(`Ветка Фичи \`${branch}\`:`);
+      lines.push(...branchLinks(deps, config, task.repos, ws, branch));
+    }
+  }
+  lines.push(`Прочитай ${ws}/AGENTS.md и ${ws}/TASK.md, затем \`flow recall ${task.id}\`. Гейт этапа проверяй по stages.json, не по памяти чата. Диагностика только через orca-env.`);
+  return lines.join("\n");
+}
+
+function cmdAgent(deps: CliDeps, argv: string[]): void {
+  const id = argv[0];
+  if (!id) die(deps, "usage: flow agent <id>");
+  const registry = readRegistry(deps.metaDir);
+  const task = registry.tasks[id];
+  if (!task) die(deps, `task not found: ${id}`);
+  const ws = task.workspacePath;
+  if (!fs.existsSync(ws)) die(deps, `workspace is missing: ${ws}`);
+  const feature = task.parentId ? registry.tasks[task.parentId] ?? null : null;
+  writeAgents(ws, task, feature);
+  const dir = agentWorkdir(task, readConfig(deps.metaDir));
+  if (dir === ws) deps.space.registerFolder(dir); // Orca запускает агента только в известном workspace
+  const prompt = agentPrompt(deps, task, feature);
+  const ok = deps.space.available() ? deps.space.launchAgent(dir, prompt) : deps.agent.launchChat(dir, prompt);
+  if (!ok) die(deps, "cannot launch agent (orca/opencode)");
+  deps.out(`агент запущен: ${dir}`);
+}
+
 function cmdUp(deps: CliDeps, argv: string[]): void {
   const id = argv[0];
   if (!id) die(deps, "usage: flow up <id>");
@@ -230,7 +300,8 @@ function cmdUp(deps: CliDeps, argv: string[]): void {
   const tpl = fs.readFileSync(path.join(deps.metaDir, "templates/docker-compose.tpl.yml"), "utf8");
   fs.writeFileSync(file, renderCompose(tpl, task.repos));
   applyBffPatch(ws, config, deps);
-  writeAgents(ws, task, task.parentId ? registry.tasks[task.parentId] ?? null : null);
+  const feature = task.parentId ? registry.tasks[task.parentId] ?? null : null;
+  writeAgents(ws, task, feature);
   if (deps.startStack) {
     const sfile = stagesPath(ws);
     let sdata = readStages(sfile) ?? initStages("task", id);
@@ -248,12 +319,93 @@ function cmdUp(deps: CliDeps, argv: string[]): void {
   } else {
     deps.out("stack plan ready (env/compose written); pass --start to launch containers");
   }
-  if (!deps.space.available()) {
-    const primary = task.repos.find((r) => ["www", "admin", "mls"].includes(r)) ?? task.repos[0];
-    if (primary) deps.agent.launchChat(path.join(ws, primary), `Ты в задаче ${id}. Прочитай ${ws}/AGENTS.md и ${ws}/TASK.md, затем \`flow recall ${id}\`. Гейт этапа проверяй по stages.json, не по памяти чата. Диагностика только через orca-env.`);
-  }
+  if (!deps.space.available()) deps.agent.launchChat(ws, agentPrompt(deps, task, feature));
   deps.out(`${id} slot=${alloc.slot} endpoints=${JSON.stringify(alloc.endpoints)}`);
   if (deps.startStack) recordStages(deps, id, [6, 7], "авто: стек запущен, рабочее место готово");
+}
+
+const COMMIT_TYPES: Record<TaskType, string> = { bug: "fix", task: "feat", story: "feat" };
+const PROTECTED_BRANCHES = ["stage", "master", "main", "develop"];
+
+function taskRepoDirs(config: Config, task: Task): Array<{ repo: string; dir: string }> {
+  const dirs: Array<{ repo: string; dir: string }> = [];
+  for (const repo of task.repos) {
+    const dir = repoPath(config, task.workspacePath, repo);
+    if (dir) dirs.push({ repo, dir });
+  }
+  return dirs;
+}
+
+function commitSubject(task: Task): string {
+  const withoutId = task.titleRu.replace(/^[A-Z]+-\d+\s*[:\u2014-]\s*/, "");
+  return cleanSummary(withoutId).slice(0, 64);
+}
+
+function commitRepo(deps: CliDeps, dir: string, type: string, subject: string): boolean {
+  deps.git.addAll(dir);
+  if (fs.existsSync(path.join(dir, "changelog.config.js"))) {
+    const cz = spawnSync(
+      "npx",
+      ["git-cz", "--non-interactive", "--type", type, "--subject", subject],
+      { cwd: dir, encoding: "utf8" }
+    );
+    if (cz.status === 0) return true;
+  }
+  if (deps.git.commit(dir, `${type}: ${subject}`)) return true;
+  return deps.git.statusPorcelain(dir).length === 0;
+}
+
+function cmdCommit(deps: CliDeps, argv: string[]): void {
+  const { pos, flags } = parseFlags(argv);
+  const id = pos[0];
+  if (!id) die(deps, "usage: flow commit <id> [--subject text] [--type fix]");
+  const config = readConfig(deps.metaDir);
+  const task = readRegistry(deps.metaDir).tasks[id];
+  if (!task) die(deps, `task not found: ${id}`);
+  const type = (flags.type as string) ?? COMMIT_TYPES[task.type];
+  const subject = ((flags.subject as string) ?? commitSubject(task)).slice(0, 64);
+  let committed = 0;
+  for (const { repo, dir } of taskRepoDirs(config, task)) {
+    if (deps.git.statusPorcelain(dir).length === 0) continue;
+    if (!commitRepo(deps, dir, type, subject)) die(deps, `${repo}: commit failed`);
+    deps.out(`${repo}: ${type}: ${subject}`);
+    committed++;
+  }
+  deps.out(committed === 0 ? "нечего коммитить: рабочее дерево чистое" : `закоммичено репозиториев: ${committed}`);
+}
+
+function cmdMr(deps: CliDeps, argv: string[]): void {
+  const id = argv[0];
+  if (!id) die(deps, "usage: flow mr <id>");
+  const config = readConfig(deps.metaDir);
+  const registry = readRegistry(deps.metaDir);
+  const task = registry.tasks[id];
+  if (!task) die(deps, `task not found: ${id}`);
+  const feature = task.parentId ? registry.tasks[task.parentId] ?? null : null;
+  const branch = task.branch;
+  if (PROTECTED_BRANCHES.includes(branch) || task.type !== "story" && !branch.startsWith(`${id}`)) {
+    die(deps, `push из '${branch}' запрещён: MR оформляется только из ветки задачи`);
+  }
+  const target = task.type === "story" ? "stage" : feature?.branch ?? "stage";
+  if (target !== "stage" && !target.startsWith("feature-")) {
+    die(deps, `цель MR '${target}' не stage и не feature-ветка`);
+  }
+  const link = task.type === "story" ? "Сторя" : "Задача";
+  const title = task.type === "story" ? `[${branch.replace(/^feature-/, "").replace(/-REALT-\d+$/, "")}]:${id}` : branch;
+  const description = `${task.titleRu}\n\n${link}: https://youtrack.realt.by/issue/${id}`;
+  for (const { repo, dir } of taskRepoDirs(config, task)) {
+    const push = spawnSync("git", ["-C", dir, "push", "-u", "origin", branch], { encoding: "utf8" });
+    if (push.status !== 0) die(deps, `${repo}: push failed: ${(push.stderr ?? "").trim()}`);
+    const mr = spawnSync(
+      "glab",
+      ["mr", "create", "--source-branch", branch, "--target-branch", target, "--title", title, "--description", description, "--yes"],
+      { cwd: dir, encoding: "utf8" }
+    );
+    if (mr.status !== 0) die(deps, `${repo}: glab mr create failed: ${(mr.stderr || mr.stdout || "").trim()}`);
+    deps.out(`${repo}: MR ${branch} → ${target}`);
+    const url = /https?:\/\/\S+/.exec(mr.stdout ?? "");
+    if (url) deps.out(`  ${url[0]}`);
+  }
 }
 
 function cmdMerge(deps: CliDeps, argv: string[]): void {
@@ -554,6 +706,9 @@ const USAGE = `usage: flow <command> [options]
 
   new <id|url> --type story|task|bug [--repos list] [--fixture file] [--dry-run]
   up <id> [--start]      start (or plan) the Docker stack of a task
+  agent <id>             launch opencode agent in the task workspace with task context
+  commit <id> [--subject text] [--type fix]   commit changes in every repo of the task
+  mr <id>                push the task branch and open a GitLab MR
   intake <id|url> --type story|task|bug   issue -> JSON
   switch <branch> --repos <list>          переключить основной клон на ветку (без окружения)
   state list|show <id>   registry
@@ -570,6 +725,9 @@ export function runCli(argv: string[], deps: CliDeps): void {
   switch (cmd) {
     case "new": return cmdNew(deps, rest);
     case "up": return cmdUp(deps, rest);
+    case "agent": return cmdAgent(deps, rest);
+    case "commit": return cmdCommit(deps, rest);
+    case "mr": return cmdMr(deps, rest);
     case "merge": return cmdMerge(deps, rest);
     case "finish": return cmdFinish(deps, rest);
     case "recall": return cmdRecall(deps, rest);

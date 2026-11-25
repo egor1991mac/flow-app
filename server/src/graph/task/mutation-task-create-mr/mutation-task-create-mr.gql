@@ -1,0 +1,3 @@
+extend type Mutation {
+  createTaskMr(id: String!): InvokeResult!
+}

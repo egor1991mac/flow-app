@@ -2,6 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Task } from "./types.ts";
 
+export function repoWebUrl(remote: string | null): string | null {
+  if (!remote) return null;
+  const m = /^(?:git@|ssh:\/\/git@|https?:\/\/)([^:/]+)[:/](.+)$/.exec(remote.trim());
+  if (!m) return null;
+  return `https://${m[1]}/${m[2].replace(/\.git$/, "")}`;
+}
+
 export function writeSpec(ws: string, task: Task, refresh = false): void {
   const file = path.join(ws, "TASK.md");
   const desc = task.description ?? "";

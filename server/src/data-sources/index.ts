@@ -49,6 +49,9 @@ export interface FlowApi {
   approveStage(id: string, n: number, phrase: string): InvokeResult;
   mergeTask(id: string, yes: boolean): InvokeResult;
   finishTask(id: string, yes: boolean, dryRun: boolean): InvokeResult;
+  launchAgent(id: string): InvokeResult;
+  commitTask(id: string, subject?: string | null): InvokeResult;
+  createTaskMr(id: string): InvokeResult;
 }
 
 export const getDataSources = (): FlowApi => ({
@@ -135,5 +138,17 @@ export const getDataSources = (): FlowApi => ({
     return invoke(["finish", id, ...(yes ? ["--yes"] : []), ...(dryRun ? ["--dry-run"] : [])], {
       assumeYes: yes,
     });
+  },
+
+  launchAgent(id) {
+    return invoke(["agent", id]);
+  },
+
+  commitTask(id, subject) {
+    return invoke(["commit", id, ...(subject ? ["--subject", subject] : [])]);
+  },
+
+  createTaskMr(id) {
+    return invoke(["mr", id]);
   },
 });

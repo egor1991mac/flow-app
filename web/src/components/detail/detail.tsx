@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 
 import {
   MUTATION_APPROVE_STAGE,
+  MUTATION_COMMIT_TASK,
+  MUTATION_CREATE_TASK_MR,
   MUTATION_FINISH_TASK,
+  MUTATION_LAUNCH_AGENT,
   MUTATION_MERGE_TASK,
   MUTATION_SET_STAGE,
   MUTATION_START_TASK,
@@ -66,6 +69,7 @@ interface ApproveStageInput {
 export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, onRefresh }) => {
   const [stageNum, setStageNum] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [phrase, setPhrase] = useState("");
   const [log, setLog] = useState("");
@@ -98,11 +102,22 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     { finishTask: InvokeResult },
     { id: string; yes?: boolean; dryRun?: boolean }
   >(MUTATION_FINISH_TASK);
+  const [launchAgent] = useMutation<{ launchAgent: InvokeResult }, { id: string }>(
+    MUTATION_LAUNCH_AGENT
+  );
+  const [commitTask] = useMutation<
+    { commitTask: InvokeResult },
+    { id: string; subject?: string | null }
+  >(MUTATION_COMMIT_TASK);
+  const [createTaskMr] = useMutation<{ createTaskMr: InvokeResult }, { id: string }>(
+    MUTATION_CREATE_TASK_MR
+  );
 
   useEffect(() => {
     setStageNum(null);
     setMsg(null);
     setBusy(false);
+    setPending(null);
     setLog("");
   }, [id]);
 
@@ -118,6 +133,15 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
       onJobEnd();
     }
   }, [jobData, refetch, onJobEnd]);
+
+  const run = async (label: string, action: () => Promise<void>) => {
+    setPending(label);
+    try {
+      await action();
+    } finally {
+      setPending(null);
+    }
+  };
 
   const show = (res: InvokeResult) => {
     setMsg({
@@ -187,6 +211,34 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     await onStart(task.id);
   };
 
+  const agentClick = async () => {
+    const r = await launchAgent({ variables: { id: task.id } });
+    if (r.data) {
+      show(r.data.launchAgent);
+    }
+  };
+
+  const commitClick = async () => {
+    const subject = prompt("Тема коммита (пусто — взять из названия задачи)");
+    if (subject === null) {
+      return;
+    }
+    const r = await commitTask({ variables: { id: task.id, subject: subject.trim() || null } });
+    if (r.data) {
+      show(r.data.commitTask);
+    }
+  };
+
+  const mrClick = async () => {
+    if (!confirm(`Отправить ветку ${task.branch} и создать MR для ${task.id}?`)) {
+      return;
+    }
+    const r = await createTaskMr({ variables: { id: task.id } });
+    if (r.data) {
+      show(r.data.createTaskMr);
+    }
+  };
+
   const mergeClick = async () => {
     if (confirm(`Слить ${task.id} в Фичу ${task.parentId} и остановить стек?`)) {
       const r = await mergeTask({ variables: { id: task.id, yes: true } });
@@ -223,6 +275,13 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
       return "Только для активной задачи";
     }
     return `Запустить окружение ${task.id}: слот, порты, env/compose и контейнеры`;
+  };
+
+  const getAgentHint = (): string => {
+    if (task.status === "closed") {
+      return "Задача закрыта: рабочей копии нет";
+    }
+    return `Запустить opencode в ${task.workspacePath} с контекстом задачи: AGENTS.md, TASK.md, flow recall и ссылки на ветку задачи и Фичи`;
   };
 
   const getMergeHint = (): string => {
@@ -289,168 +348,220 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     );
 
   return (
-    <div>
-      <h2>{task.titleRu ?? task.id}</h2>
-      <div className="meta">
-        <span className={`pill ${task.status}`}>{task.status}</span> · {task.type}
-        {task.parentId ? <> · Фича {task.parentId}</> : null}
-      </div>
-      <div className="meta">
-        ветка{" "}
-        {uniqueBranches.map((r, i) => (
-          <span key={r.repo}>
-            {i > 0 ? " · " : ""}
-            {uniqueBranches.length > 1 ? `${r.repo}: ` : ""}
-            {branchRef(r.branch, r.url)}
-            {r.base ? (
-              <>
-                {" от "}
-                {branchRef(r.base, r.baseUrl)}
-              </>
-            ) : null}
-          </span>
-        ))}
-      </div>
-      <div className="meta">{task.workspacePath}</div>
-
-      <h3>Жизненный цикл</h3>
-      <div className="actions-panel">
-        <div className="action-group">
-          <div className="group-title">{task.type === "story" ? "Фича" : "Задача"}</div>
-          <div className="group-hint">
-            Старт поднимает окружение: слот, порты, env/compose, контейнеры (при создании ничего не
-            запускается). merge вливает ветку в Фичу, finish гасит стек и удаляет копии.
-          </div>
-          <div className="action-row">
-            <button
-              className="primary"
-              disabled={task.status !== "active" || task.mode === "simple"}
-              title={getStartHint()}
-              onClick={() => void startClick()}
-            >
-              ▶ Старт
-            </button>
-            <button
-              disabled={task.status !== "active" || !task.parentId || task.parentExternal}
-              title={getMergeHint()}
-              onClick={() => void mergeClick()}
-            >
-              merge в Фичу
-            </button>
-            <button
-              className="danger"
-              disabled={task.status === "closed"}
-              title="Гейты (грязный код, невлитая ветка, дети) требуют подтверждения"
-              onClick={() => void finishClick()}
-            >
-              finish: закрыть
-            </button>
-          </div>
+    <>
+      <div className="detail-main">
+        <h2>{task.titleRu ?? task.id}</h2>
+        <div className="meta">
+          <span className={`pill ${task.status}`}>{task.status}</span> · {task.type}
+          {task.parentId ? <> · Фича {task.parentId}</> : null}
         </div>
-      </div>
+        <div className="meta">
+          ветка{" "}
+          {uniqueBranches.map((r, i) => (
+            <span key={r.repo}>
+              {i > 0 ? " · " : ""}
+              {uniqueBranches.length > 1 ? `${r.repo}: ` : ""}
+              {branchRef(r.branch, r.url)}
+              {r.base ? (
+                <>
+                  {" от "}
+                  {branchRef(r.base, r.baseUrl)}
+                </>
+              ) : null}
+            </span>
+          ))}
+        </div>
+        <div className="meta">{task.workspacePath}</div>
 
-      <h3>Этапы</h3>
-      <div className="stages">
-        {set.map((i) => {
-          const s = stageList.find((x) => x.stage === i);
-          const status = s?.status ?? "pending";
-          const [sname, sdesc] = stageDef(task, i);
-          return (
-            <div
-              key={i}
-              className={`stage ${status}` + (current === i ? " selected" : "")}
-              title={`этап ${i}: ${sname} — ${sdesc} (клик — логи этапа)`}
-              onClick={() => setStageNum(i)}
-            >
-              <div className="n">{i}</div>
-              <div className="sname">{sname}</div>
-              <div className="sdesc">{sdesc}</div>
-              <div className="sstatus">{status}</div>
+        <h3>Описание</h3>
+        {task.description ? (
+          <div className="description">{task.description}</div>
+        ) : (
+          <p className="hint">описания нет</p>
+        )}
+
+        <h3>Жизненный цикл</h3>
+        <div className="actions-panel">
+          <div className="action-group">
+            <div className="group-title">{task.type === "story" ? "Фича" : "Задача"}</div>
+            <div className="group-hint">
+              Старт поднимает окружение: слот, порты, env/compose, контейнеры (при создании ничего
+              не запускается). Коммит и MR работают по репозиториям задачи, merge вливает ветку в
+              Фичу, finish гасит стек и удаляет копии.
             </div>
-          );
-        })}
-      </div>
-      <p className="hint">
-        {task.mode === "simple"
-          ? "Режим «просто ветка»: нет worktree, пространства и Docker, поэтому этапы 0, 3, 4, 5, 6, 7 скрыты (в памяти задачи остаются). Работа идёт в основном клоне, закрытие снимает запись из реестра, ветка остаётся."
-          : "Старт проходит этапы 6 → 7 последовательно: у выполняющегося этапа крутится лоадер, блок залит цветом статуса. Клик по этапу — его логи и действия. passed — выполнено автоматически, approved — подтверждено вами."}
-      </p>
-
-      <div className="stage-actions">
-        <div className="action-group stage-action-group">
-          <div className="group-title">
-            Этап {current}: {stageDef(task, current)[0]}
-          </div>
-          <div className="group-hint">
-            running — начали, passed — отчитались, failed — провал и повтор с начала. approve
-            принимает только фразу «этап N ок» и только после passed.
-          </div>
-          <div className="action-row">
-            {(["running", "passed", "failed"] as const).map((status) => (
+            <div className="action-row">
               <button
-                key={status}
-                disabled={busy}
-                title={`Отметить этап ${current} как ${status}`}
-                onClick={() => void runStage(status)}
+                className="primary"
+                disabled={pending !== null || task.status !== "active" || task.mode === "simple"}
+                title={getStartHint()}
+                onClick={() => void run("старт", startClick)}
               >
-                {status}
+                ▶ Старт
               </button>
-            ))}
-            <input
-              placeholder={`этап ${current} ок`}
-              size={14}
-              value={phrase}
-              onChange={(e) => setPhrase(e.target.value)}
-            />
-            <button className="primary" disabled={busy} onClick={() => void runApprove()}>
-              approve
-            </button>
+              <button
+                disabled={pending !== null || task.status === "closed"}
+                title={getAgentHint()}
+                onClick={() => void run("запуск агента", agentClick)}
+              >
+                Запустить агента
+              </button>
+              <button
+                disabled={pending !== null || task.status === "closed"}
+                title="Закоммитить изменения во всех репозиториях задачи (git-cz, если настроен)"
+                onClick={() => void run("коммит", commitClick)}
+              >
+                Коммит
+              </button>
+              <button
+                disabled={pending !== null || task.status === "closed"}
+                title={`Push ветки и MR: ${task.parentId ? `в Фичу ${task.parentId}` : "в stage"}`}
+                onClick={() => void run("MR", mrClick)}
+              >
+                MR
+              </button>
+              <button
+                disabled={
+                  pending !== null ||
+                  task.status !== "active" ||
+                  !task.parentId ||
+                  task.parentExternal
+                }
+                title={getMergeHint()}
+                onClick={() => void run("merge", mergeClick)}
+              >
+                merge в Фичу
+              </button>
+              <button
+                className="danger"
+                disabled={pending !== null || task.status === "closed"}
+                title="Гейты (грязный код, невлитая ветка, дети) требуют подтверждения"
+                onClick={() => void run("finish", finishClick)}
+              >
+                finish: закрыть
+              </button>
+            </div>
+            {pending ? (
+              <div className="run-status">
+                <span className="spinner" /> {pending}…
+              </div>
+            ) : null}
           </div>
         </div>
+
+        <h3>Этапы</h3>
+        <div className="stages">
+          {set.map((i) => {
+            const s = stageList.find((x) => x.stage === i);
+            const status = s?.status ?? "pending";
+            const [sname, sdesc] = stageDef(task, i);
+            return (
+              <div
+                key={i}
+                className={`stage ${status}` + (current === i ? " selected" : "")}
+                title={`этап ${i}: ${sname} — ${sdesc} (клик — логи этапа)`}
+                onClick={() => setStageNum(i)}
+              >
+                <div className="n">{i}</div>
+                <div className="sname">{sname}</div>
+                <div className="sdesc">{sdesc}</div>
+                <div className="sstatus">{status}</div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="hint">
+          {task.mode === "simple"
+            ? "Режим «просто ветка»: нет worktree, пространства и Docker, поэтому этапы 0, 3, 4, 5, 6, 7 скрыты (в памяти задачи остаются). Работа идёт в основном клоне, закрытие снимает запись из реестра, ветка остаётся."
+            : "Старт проходит этапы 6 → 7 последовательно: у выполняющегося этапа крутится лоадер, блок залит цветом статуса. Клик по этапу — его логи и действия. passed — выполнено автоматически, approved — подтверждено вами."}
+        </p>
+
+        <div className="stage-actions">
+          <div className="action-group stage-action-group">
+            <div className="group-title">
+              Этап {current}: {stageDef(task, current)[0]}
+            </div>
+            <div className="group-hint">
+              running — начали, passed — отчитались, failed — провал и повтор с начала. approve
+              принимает только фразу «этап N ок» и только после passed.
+            </div>
+            <div className="action-row">
+              {(["running", "passed", "failed"] as const).map((status) => (
+                <button
+                  key={status}
+                  disabled={pending !== null || busy}
+                  title={`Отметить этап ${current} как ${status}`}
+                  onClick={() => void run("этап", () => runStage(status))}
+                >
+                  {status}
+                </button>
+              ))}
+              <input
+                placeholder={`этап ${current} ок`}
+                size={14}
+                value={phrase}
+                onChange={(e) => setPhrase(e.target.value)}
+              />
+              <button
+                className="primary"
+                disabled={pending !== null || busy}
+                onClick={() => void run("approve", runApprove)}
+              >
+                approve
+              </button>
+            </div>
+            {pending ? (
+              <div className="run-status">
+                <span className="spinner" /> {pending}…
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {busy ? (
+          <div className="busy">
+            <span className="spinner" /> выполняется…
+          </div>
+        ) : null}
+
+        {msg ? <div className={`msg ${msg.ok ? "ok" : "err"}`}>{msg.text}</div> : null}
+        <button className="ghost" onClick={() => void onRefresh()}>
+          обновить
+        </button>
       </div>
 
-      {busy ? (
-        <div className="busy">
-          <span className="spinner" /> выполняется…
-        </div>
-      ) : null}
+      <div className="detail-side">
+        <h3>Логи</h3>
+        <div className="log">{log || stageLines.join("\n")}</div>
 
-      <h3>Логи</h3>
-      <div className="log">{log || stageLines.join("\n")}</div>
-
-      {approvals.length ? (
-        <>
-          <h3>Апрувы</h3>
-          <table>
-            <tbody>
-              <tr>
-                <th>этап</th>
-                <th>кто</th>
-                <th>когда</th>
-                <th>фраза</th>
-                <th>run</th>
-              </tr>
-              {approvals.map((a, i) => (
-                <tr key={i}>
-                  <td>{a.stage}</td>
-                  <td>{a.approvedBy}</td>
-                  <td>{a.approvedAt}</td>
-                  <td>{a.phrase}</td>
-                  <td>{a.runId}</td>
+        {approvals.length ? (
+          <>
+            <h3>Апрувы</h3>
+            <table>
+              <tbody>
+                <tr>
+                  <th>этап</th>
+                  <th>кто</th>
+                  <th>когда</th>
+                  <th>фраза</th>
+                  <th>run</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      ) : null}
+                {approvals.map((a, i) => (
+                  <tr key={i}>
+                    <td>{a.stage}</td>
+                    <td>{a.approvedBy}</td>
+                    <td>{a.approvedAt}</td>
+                    <td>{a.phrase}</td>
+                    <td>{a.runId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : null}
 
-      <h3>Журнал / решения</h3>
-      <div className="log">{journalLines.length ? journalLines.join("\n") : "память пуста"}</div>
-
-      {msg ? <div className={`msg ${msg.ok ? "ok" : "err"}`}>{msg.text}</div> : null}
-      <button className="ghost" onClick={() => void onRefresh()}>
-        обновить
-      </button>
-    </div>
+        <h3>Журнал / решения</h3>
+        <div className="log">{journalLines.length ? journalLines.join("\n") : "память пуста"}</div>
+      </div>
+    </>
   );
 };

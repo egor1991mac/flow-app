@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client";
+import { useState } from "react";
 
 import { MUTATION_FINISH_TASK, MUTATION_START_TASK } from "@/lib/graphql/documents";
 import { displayName } from "@/lib/stages";
@@ -17,6 +18,7 @@ interface TreeProps {
 }
 
 export const Tree: FC<TreeProps> = ({ tasks, selected, onSelect, onStart, onFinish }) => {
+  const [showClosed, setShowClosed] = useState(true);
   const [startMutation] = useMutation<{ startTask: StartResult }, { id: string; start: boolean }>(
     MUTATION_START_TASK
   );
@@ -25,17 +27,18 @@ export const Tree: FC<TreeProps> = ({ tasks, selected, onSelect, onStart, onFini
     { id: string; yes?: boolean; dryRun?: boolean }
   >(MUTATION_FINISH_TASK);
 
-  const byId = Object.fromEntries(tasks.map((t) => [t.id, t]));
-  const features = tasks.filter((t) => t.type === "story");
-  const roots = [...features];
+  const open = tasks.filter((t) => t.status !== "closed");
+  const closed = tasks.filter((t) => t.status === "closed");
+  const byId = Object.fromEntries(open.map((t) => [t.id, t]));
+  const roots = open.filter((t) => t.type === "story");
   const childIds = new Set<string>();
-  for (const t of tasks) {
+  for (const t of open) {
     const parent = t.parentId ? byId[t.parentId] : undefined;
     if (parent?.type === "story") {
       childIds.add(t.id);
     }
   }
-  for (const t of tasks) {
+  for (const t of open) {
     if (t.type !== "story" && !childIds.has(t.id)) {
       roots.push(t);
     }
@@ -102,16 +105,30 @@ export const Tree: FC<TreeProps> = ({ tasks, selected, onSelect, onStart, onFini
 
   return (
     <>
+      <div className="group-title">Открытые ({open.length})</div>
       {roots.map((f) => (
         <div key={f.id}>
           {node(f)}
           {f.type === "story" && (
             <div className="children">
-              {tasks.filter((t) => t.parentId === f.id).map((k) => node(k))}
+              {open.filter((t) => t.parentId === f.id).map((k) => node(k))}
             </div>
           )}
         </div>
       ))}
+
+      {closed.length > 0 ? (
+        <div className="tree-closed">
+          <button
+            className="group-title tree-toggle"
+            title={showClosed ? "Скрыть закрытые задачи" : "Показать закрытые задачи"}
+            onClick={() => setShowClosed((v) => !v)}
+          >
+            {showClosed ? "▾" : "▸"} Закрытые ({closed.length})
+          </button>
+          {showClosed ? closed.map((t) => node(t)) : null}
+        </div>
+      ) : null}
     </>
   );
 };
