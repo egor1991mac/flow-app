@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client";
+import { useEffect, useRef, useState } from "react";
+
 import {
   MUTATION_CREATE_TASK,
   MUTATION_SWITCH_TASK,
@@ -10,7 +11,9 @@ import {
   QUERY_INTAKE,
   QUERY_TASK,
 } from "@/lib/graphql/documents";
+
 import type { AppConfig, IntakeResponse, InvokeResult, Task } from "@/lib/types";
+import type { FC } from "react";
 
 interface CreateModalProps {
   open: boolean;
@@ -39,7 +42,7 @@ interface SwitchTaskInput {
   from?: string | null;
 }
 
-export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
+export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) => {
   const ref = useRef<HTMLDialogElement | null>(null);
   const client = useApolloClient();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -57,24 +60,37 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
 
   const { data: configData } = useQuery<{ config: AppConfig }>(QUERY_CONFIG, { skip: !open });
   const parentForBase = /^[A-Z]+-\d+$/i.test(parentId.trim()) ? parentId.trim() : null;
-  const { data: branchesData } = useQuery<{ branchNames: string[] }, { parentId: string | null }>(QUERY_BRANCH_NAMES, {
-    skip: !open,
-    variables: { parentId: parentForBase },
+  const { data: branchesData } = useQuery<{ branchNames: string[] }, { parentId: string | null }>(
+    QUERY_BRANCH_NAMES,
+    {
+      skip: !open,
+      variables: { parentId: parentForBase },
+    }
+  );
+  const [loadIntake] = useLazyQuery<{ intake: IntakeResponse }, { input: string }>(QUERY_INTAKE, {
+    fetchPolicy: "network-only",
   });
-  const [loadIntake] = useLazyQuery<{ intake: IntakeResponse }, { input: string }>(QUERY_INTAKE, { fetchPolicy: "network-only" });
-  const [createMutation] = useMutation<{ createTask: InvokeResult }, { input: CreateTaskInput }>(MUTATION_CREATE_TASK);
-  const [switchMutation] = useMutation<{ switchTask: InvokeResult }, { input: SwitchTaskInput }>(MUTATION_SWITCH_TASK);
+  const [createMutation] = useMutation<{ createTask: InvokeResult }, { input: CreateTaskInput }>(
+    MUTATION_CREATE_TASK
+  );
+  const [switchMutation] = useMutation<{ switchTask: InvokeResult }, { input: SwitchTaskInput }>(
+    MUTATION_SWITCH_TASK
+  );
 
   const config = configData?.config ?? null;
   const branches = branchesData?.branchNames ?? [];
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
     ref.current?.showModal();
   }, [open]);
 
   useEffect(() => {
-    if (!config || Object.keys(checked).length > 0) return;
+    if (!config || Object.keys(checked).length > 0) {
+      return;
+    }
     const first = config.repos.www ? "www" : Object.keys(config.repos)[0];
     setChecked({ [first]: true });
   }, [config, checked]);
@@ -88,10 +104,15 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
     setChecked((prev) => {
       const next = { ...prev, [repo]: !prev[repo] };
       if (mode === "worktree" && pair) {
-        if (next[repo]) next[pair] = true;
-        else {
-          const stillNeeded = Object.entries(next).some(([r, on]) => on && config?.repos[r]?.pair === pair);
-          if (!stillNeeded) next[pair] = false;
+        if (next[repo]) {
+          next[pair] = true;
+        } else {
+          const stillNeeded = Object.entries(next).some(
+            ([r, on]) => on && config?.repos[r]?.pair === pair
+          );
+          if (!stillNeeded) {
+            next[pair] = false;
+          }
         }
       }
       return next;
@@ -99,10 +120,18 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
   };
 
   const defaultBaseFromParent = async (parent: string) => {
-    if (!parent) return;
+    if (!parent) {
+      return;
+    }
     try {
-      const t = await client.query<{ task: Task | null }>({ query: QUERY_TASK, variables: { id: parent }, fetchPolicy: "network-only" });
-      if (t.data.task?.branch) setBase(t.data.task.branch);
+      const t = await client.query<{ task: Task | null }>({
+        query: QUERY_TASK,
+        variables: { id: parent },
+        fetchPolicy: "network-only",
+      });
+      if (t.data.task?.branch) {
+        setBase(t.data.task.branch);
+      }
     } catch {}
   };
 
@@ -128,7 +157,7 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
       setMsg(
         `заполнено из YouTrack: ${r.id ?? ""} · ${r.ytType ?? "тип не задан"} · ${r.state ?? ""}` +
           (r.parentSource ? ` · Фича: ${r.parentId} (${r.parentSource})` : "") +
-          (r.parentError ? ` · ${r.parentError}` : ""),
+          (r.parentError ? ` · ${r.parentError}` : "")
       );
       await defaultBaseFromParent(r.parentId ?? "");
     } catch (e) {
@@ -164,7 +193,9 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
         },
       });
       const result = res.data?.switchTask;
-      setMsg(result?.ok ? "готово: " + result.output.join("; ") : "ошибка: " + (result?.error ?? ""));
+      setMsg(
+        result?.ok ? "готово: " + result.output.join("; ") : "ошибка: " + (result?.error ?? "")
+      );
       if (result?.ok) {
         await onCreated(id);
         setTimeout(close, 800);
@@ -204,7 +235,9 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
       className="modal"
       onClose={onClose}
       onKeyDown={(e) => {
-        if (e.key === "Escape") close();
+        if (e.key === "Escape") {
+          close();
+        }
       }}
     >
       <div className="modal-head">
@@ -229,7 +262,11 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
                 }
               }}
             />
-            <button className={loading ? "loading" : ""} disabled={loading} onClick={() => void loadFromYouTrack()}>
+            <button
+              className={loading ? "loading" : ""}
+              disabled={loading}
+              onClick={() => void loadFromYouTrack()}
+            >
               Загрузить
             </button>
           </span>
@@ -273,7 +310,11 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
             onChange={(e) => {
               const m = e.target.value as "worktree" | "switch";
               setMode(m);
-              setMsg(m === "switch" ? "создастся ветка задачи от основы и переключится основной клон — без worktree, окружения и Docker" : "");
+              setMsg(
+                m === "switch"
+                  ? "создастся ветка задачи от основы и переключится основной клон — без worktree, окружения и Docker"
+                  : ""
+              );
             }}
           >
             <option value="worktree">worktree: копии + Docker по кнопке</option>
@@ -282,13 +323,21 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
         </label>
         <label className="wide">
           <span className="form-title">Основа: от какой ветки отвести</span>
-          <input list="nf-branches" value={base} disabled={locked} onChange={(e) => setBase(e.target.value)} />
+          <input
+            list="nf-branches"
+            value={base}
+            disabled={locked}
+            onChange={(e) => setBase(e.target.value)}
+          />
           <datalist id="nf-branches">
             {branches.map((b) => (
               <option key={b} value={b} />
             ))}
           </datalist>
-          <span className="field-note">пусто → ветка Фичи, иначе stage; если основы нет в репозитории — фолбэк на stage с предупреждением</span>
+          <span className="field-note">
+            пусто → ветка Фичи, иначе stage; если основы нет в репозитории — фолбэк на stage с
+            предупреждением
+          </span>
         </label>
         <label className="wide">
           <span className="form-title">Репозитории</span>
@@ -305,7 +354,11 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
               </label>
             ))}
           </span>
-          <span className="field-note">{mode === "worktree" ? "пары ui→api подхватываются автоматически" : "пары не добавляются: только отмеченные"}</span>
+          <span className="field-note">
+            {mode === "worktree"
+              ? "пары ui→api подхватываются автоматически"
+              : "пары не добавляются: только отмеченные"}
+          </span>
         </label>
       </div>
       <div className="modal-actions">
@@ -317,4 +370,4 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
       </div>
     </dialog>
   );
-}
+};

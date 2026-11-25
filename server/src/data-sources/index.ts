@@ -16,7 +16,15 @@ import {
   globalStagesPath,
   tailJsonl,
 } from "./flow-api.ts";
-import type { BranchRow, CreateTaskInput, CreateTaskResult, IntakeResult, InvokeResult, Job, SwitchTaskInput } from "./flow-api.ts";
+import type {
+  BranchRow,
+  CreateTaskInput,
+  CreateTaskResult,
+  IntakeResult,
+  InvokeResult,
+  Job,
+  SwitchTaskInput,
+} from "./flow-api.ts";
 import { indexedCount, searchMemory } from "./vector-api.ts";
 import type { SearchHit } from "./vector-api.ts";
 
@@ -57,7 +65,7 @@ export const getDataSources = (): FlowApi => ({
 
   getTaskStages(taskId) {
     const task = readRegistry(META).tasks[taskId];
-    return task ? (readStages(stagesPath(task.workspacePath)) ?? null) : null;
+    return task ? readStages(stagesPath(task.workspacePath)) ?? null : null;
   },
 
   getTaskJournal(taskId) {
@@ -124,6 +132,8 @@ export const getDataSources = (): FlowApi => ({
   },
 
   finishTask(id, yes, dryRun) {
-    return invoke(["finish", id, ...(yes ? ["--yes"] : []), ...(dryRun ? ["--dry-run"] : [])], { assumeYes: yes });
+    return invoke(["finish", id, ...(yes ? ["--yes"] : []), ...(dryRun ? ["--dry-run"] : [])], {
+      assumeYes: yes,
+    });
   },
 });

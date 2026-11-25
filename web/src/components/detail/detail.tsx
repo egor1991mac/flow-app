@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client";
+import { useEffect, useState } from "react";
+
 import {
   MUTATION_APPROVE_STAGE,
   MUTATION_FINISH_TASK,
@@ -11,8 +12,18 @@ import {
   QUERY_JOB,
   QUERY_TASK_DETAIL,
 } from "@/lib/graphql/documents";
-import type { BranchRow, InvokeResult, Job, JournalData, StagesFile, StartResult, Task } from "@/lib/types";
 import { stageDef, stageSet } from "@/lib/stages";
+
+import type {
+  BranchRow,
+  InvokeResult,
+  Job,
+  JournalData,
+  StagesFile,
+  StartResult,
+  Task,
+} from "@/lib/types";
+import type { FC } from "react";
 
 interface ActiveJob {
   taskId: string;
@@ -52,7 +63,7 @@ interface ApproveStageInput {
   phrase: string;
 }
 
-export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: DetailProps) {
+export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, onRefresh }) => {
   const [stageNum, setStageNum] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -71,11 +82,22 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
     pollInterval: 700,
   });
 
-  const [setStage] = useMutation<{ setStage: InvokeResult }, { input: StageInput }>(MUTATION_SET_STAGE);
-  const [approveStage] = useMutation<{ approveStage: InvokeResult }, { input: ApproveStageInput }>(MUTATION_APPROVE_STAGE);
-  const [startTask] = useMutation<{ startTask: StartResult }, { id: string; start: boolean }>(MUTATION_START_TASK);
-  const [mergeTask] = useMutation<{ mergeTask: InvokeResult }, { id: string; yes?: boolean }>(MUTATION_MERGE_TASK);
-  const [finishTask] = useMutation<{ finishTask: InvokeResult }, { id: string; yes?: boolean; dryRun?: boolean }>(MUTATION_FINISH_TASK);
+  const [setStage] = useMutation<{ setStage: InvokeResult }, { input: StageInput }>(
+    MUTATION_SET_STAGE
+  );
+  const [approveStage] = useMutation<{ approveStage: InvokeResult }, { input: ApproveStageInput }>(
+    MUTATION_APPROVE_STAGE
+  );
+  const [startTask] = useMutation<{ startTask: StartResult }, { id: string; start: boolean }>(
+    MUTATION_START_TASK
+  );
+  const [mergeTask] = useMutation<{ mergeTask: InvokeResult }, { id: string; yes?: boolean }>(
+    MUTATION_MERGE_TASK
+  );
+  const [finishTask] = useMutation<
+    { finishTask: InvokeResult },
+    { id: string; yes?: boolean; dryRun?: boolean }
+  >(MUTATION_FINISH_TASK);
 
   useEffect(() => {
     setStageNum(null);
@@ -85,7 +107,9 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
   }, [id]);
 
   useEffect(() => {
-    if (!jobData?.job) return;
+    if (!jobData?.job) {
+      return;
+    }
     setLog(jobData.job.log);
     if (jobData.job.done) {
       setBusy(false);
@@ -98,38 +122,66 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
   const show = (res: InvokeResult) => {
     setMsg({
       ok: res.ok,
-      text: res.ok ? res.output.join("\n") : (res.error ?? "ошибка") + "\n" + (res.err ?? []).join("\n"),
+      text: res.ok
+        ? res.output.join("\n")
+        : (res.error ?? "ошибка") + "\n" + (res.err ?? []).join("\n"),
     });
     void refetch();
   };
 
-  if (!data) return <p className="empty">загружаю…</p>;
+  if (!data) {
+    return <p className="empty">загружаю…</p>;
+  }
   const task = data.task;
-  if (!task) return <p className="empty">задача не найдена</p>;
+  if (!task) {
+    return <p className="empty">задача не найдена</p>;
+  }
 
   const stages = data.taskStages;
   const journal = data.taskJournal;
   const branches = data.taskBranches;
   const set = stageSet(task);
   const stageList = stages?.stages ?? [];
-  const current = stageNum ?? (stages?.currentStage !== null && set.includes(stages?.currentStage ?? -1) ? stages?.currentStage : set[0]) ?? set[0];
+
+  const getCurrentStage = (): number => {
+    if (stageNum !== null) {
+      return stageNum;
+    }
+    const stage = stages?.currentStage;
+    if (typeof stage === "number" && set.includes(stage)) {
+      return stage;
+    }
+    return set[0];
+  };
+
+  const current = getCurrentStage();
   const activeStage = stageList.find((s) => s.stage === current);
 
   const runStage = async (status: string) => {
-    const r = await setStage({ variables: { input: { id: task.id, n: current, status, report: "из UI" } } });
-    if (r.data) show(r.data.setStage);
+    const r = await setStage({
+      variables: { input: { id: task.id, n: current, status, report: "из UI" } },
+    });
+    if (r.data) {
+      show(r.data.setStage);
+    }
   };
 
   const runApprove = async () => {
     const r = await approveStage({ variables: { input: { id: task.id, n: current, phrase } } });
-    if (r.data) show(r.data.approveStage);
+    if (r.data) {
+      show(r.data.approveStage);
+    }
   };
 
   const startClick = async () => {
-    if (!confirm(`Запустить окружение ${task.id}? Будут заняты порты, подняты контейнеры.`)) return;
+    if (!confirm(`Запустить окружение ${task.id}? Будут заняты порты, подняты контейнеры.`)) {
+      return;
+    }
     const res = await startTask({ variables: { id: task.id, start: true } });
     if (!res.data?.startTask.jobId) {
-      if (res.data) show(res.data.startTask);
+      if (res.data) {
+        show(res.data.startTask);
+      }
       return;
     }
     await onStart(task.id);
@@ -138,58 +190,103 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
   const mergeClick = async () => {
     if (confirm(`Слить ${task.id} в Фичу ${task.parentId} и остановить стек?`)) {
       const r = await mergeTask({ variables: { id: task.id, yes: true } });
-      if (r.data) show(r.data.mergeTask);
+      if (r.data) {
+        show(r.data.mergeTask);
+      }
     }
   };
 
   const finishClick = async () => {
     const dry = await finishTask({ variables: { id: task.id, dryRun: true } });
-    if (confirm(`Закрыть ${task.id}?\n\n${(dry.data?.finishTask.output ?? []).join("\n")}\n\nГейты требуют подтверждения. Удалить окружение?`)) {
+    if (
+      confirm(
+        `Закрыть ${task.id}?\n\n${(dry.data?.finishTask.output ?? []).join(
+          "\n"
+        )}\n\nГейты требуют подтверждения. Удалить окружение?`
+      )
+    ) {
       const r = await finishTask({ variables: { id: task.id, yes: true } });
       const result = r.data?.finishTask;
-      if (result?.ok) onClosed(task.id);
-      else if (result) show(result);
+      if (result?.ok) {
+        onClosed(task.id);
+      } else if (result) {
+        show(result);
+      }
     }
   };
 
-  const upTitle =
-    task.mode === "simple"
-      ? "Задача создана в режиме «просто ветка»: окружения нет, Start недоступен"
-      : task.status === "active"
-        ? `Запустить окружение ${task.id}: слот, порты, env/compose и контейнеры`
-        : "Только для активной задачи";
-  const mergeTitle = !task.parentId
-    ? "У задачи нет Фичи"
-    : task.parentExternal
-      ? "Фича вне реестра — слияние вручную"
-      : task.status !== "active"
-        ? "Только для активной задачи"
-        : `Влить ${task.id} в ветку Фичи ${task.parentId}`;
+  const getStartHint = (): string => {
+    if (task.mode === "simple") {
+      return "Задача создана в режиме «просто ветка»: окружения нет, Start недоступен";
+    }
+    if (task.status !== "active") {
+      return "Только для активной задачи";
+    }
+    return `Запустить окружение ${task.id}: слот, порты, env/compose и контейнеры`;
+  };
+
+  const getMergeHint = (): string => {
+    if (!task.parentId) {
+      return "У задачи нет Фичи";
+    }
+    if (task.parentExternal) {
+      return "Фича вне реестра — слияние вручную";
+    }
+    if (task.status !== "active") {
+      return "Только для активной задачи";
+    }
+    return `Влить ${task.id} в ветку Фичи ${task.parentId}`;
+  };
 
   const stageLines = [`этап ${current}: ${activeStage?.status ?? "pending"}`];
   for (const r of activeStage?.runs ?? []) {
     stageLines.push(`run ${r.runId}  ${r.startedAt} → ${r.finishedAt ?? "…"}`);
-    if (r.report) stageLines.push(`  ${r.report}`);
+    if (r.report) {
+      stageLines.push(`  ${r.report}`);
+    }
   }
-  for (const a of activeStage?.approvals ?? []) stageLines.push(`approve ${a.approvedAt} «${a.phrase}» run ${a.runId}`);
+  for (const a of activeStage?.approvals ?? []) {
+    stageLines.push(`approve ${a.approvedAt} «${a.phrase}» run ${a.runId}`);
+  }
   for (const d of (journal.decisions ?? []).filter((x) => x.stage === current)) {
-    stageLines.push(`decision ${String(d.ts)} ${String(d.point)}: ${String(d.input)} -> ${String(d.choice)}`);
+    stageLines.push(
+      `decision ${String(d.ts)} ${String(d.point)}: ${String(d.input)} -> ${String(d.choice)}`
+    );
   }
-  if (stageLines.length === 1) stageLines.push("нет данных: этап ещё не выполнялся");
+  if (stageLines.length === 1) {
+    stageLines.push("нет данных: этап ещё не выполнялся");
+  }
 
   const approvals = stageList.flatMap((s) => s.approvals ?? []);
   const seenKeys = new Set<string>();
   const uniqueBranches = branches.filter((r) => {
     const k = `${r.branch}|${r.base}`;
-    if (seenKeys.has(k)) return false;
+    if (seenKeys.has(k)) {
+      return false;
+    }
     seenKeys.add(k);
     return true;
   });
 
   const journalLines = [
-    ...(journal.decisions ?? []).map((x) => `decision ${String(x.ts)} ${String(x.point)}: ${String(x.input)} -> ${String(x.choice)}`),
-    ...(journal.journal ?? []).map((x) => `event ${String(x.ts)} ${String(x.event)} ${x.details ? JSON.stringify(x.details) : ""}`),
+    ...(journal.decisions ?? []).map(
+      (x) =>
+        `decision ${String(x.ts)} ${String(x.point)}: ${String(x.input)} -> ${String(x.choice)}`
+    ),
+    ...(journal.journal ?? []).map(
+      (x) =>
+        `event ${String(x.ts)} ${String(x.event)} ${x.details ? JSON.stringify(x.details) : ""}`
+    ),
   ];
+
+  const branchRef = (name: string, url: string | null) =>
+    url ? (
+      <a className="branch-link" href={url} target="_blank" rel="noreferrer">
+        {name}
+      </a>
+    ) : (
+      <code>{name}</code>
+    );
 
   return (
     <div>
@@ -204,23 +301,11 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
           <span key={r.repo}>
             {i > 0 ? " · " : ""}
             {uniqueBranches.length > 1 ? `${r.repo}: ` : ""}
-            {r.url ? (
-              <a className="branch-link" href={r.url} target="_blank" rel="noreferrer">
-                {r.branch}
-              </a>
-            ) : (
-              <code>{r.branch}</code>
-            )}
+            {branchRef(r.branch, r.url)}
             {r.base ? (
               <>
                 {" от "}
-                {r.baseUrl ? (
-                  <a className="branch-link" href={r.baseUrl} target="_blank" rel="noreferrer">
-                    {r.base}
-                  </a>
-                ) : (
-                  <code>{r.base}</code>
-                )}
+                {branchRef(r.base, r.baseUrl)}
               </>
             ) : null}
           </span>
@@ -233,17 +318,31 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
         <div className="action-group">
           <div className="group-title">{task.type === "story" ? "Фича" : "Задача"}</div>
           <div className="group-hint">
-            Старт поднимает окружение: слот, порты, env/compose, контейнеры (при создании ничего не запускается). merge вливает
-            ветку в Фичу, finish гасит стек и удаляет копии.
+            Старт поднимает окружение: слот, порты, env/compose, контейнеры (при создании ничего не
+            запускается). merge вливает ветку в Фичу, finish гасит стек и удаляет копии.
           </div>
           <div className="action-row">
-            <button className="primary" disabled={task.status !== "active" || task.mode === "simple"} title={upTitle} onClick={() => void startClick()}>
+            <button
+              className="primary"
+              disabled={task.status !== "active" || task.mode === "simple"}
+              title={getStartHint()}
+              onClick={() => void startClick()}
+            >
               ▶ Старт
             </button>
-            <button disabled={task.status !== "active" || !task.parentId || task.parentExternal} title={mergeTitle} onClick={() => void mergeClick()}>
+            <button
+              disabled={task.status !== "active" || !task.parentId || task.parentExternal}
+              title={getMergeHint()}
+              onClick={() => void mergeClick()}
+            >
               merge в Фичу
             </button>
-            <button className="danger" disabled={task.status === "closed"} title="Гейты (грязный код, невлитая ветка, дети) требуют подтверждения" onClick={() => void finishClick()}>
+            <button
+              className="danger"
+              disabled={task.status === "closed"}
+              title="Гейты (грязный код, невлитая ветка, дети) требуют подтверждения"
+              onClick={() => void finishClick()}
+            >
               finish: закрыть
             </button>
           </div>
@@ -279,18 +378,30 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
 
       <div className="stage-actions">
         <div className="action-group stage-action-group">
-          <div className="group-title">Этап {current}: {stageDef(task, current)[0]}</div>
+          <div className="group-title">
+            Этап {current}: {stageDef(task, current)[0]}
+          </div>
           <div className="group-hint">
-            running — начали, passed — отчитались, failed — провал и повтор с начала. approve принимает только фразу «этап N ок» и
-            только после passed.
+            running — начали, passed — отчитались, failed — провал и повтор с начала. approve
+            принимает только фразу «этап N ок» и только после passed.
           </div>
           <div className="action-row">
             {(["running", "passed", "failed"] as const).map((status) => (
-              <button key={status} disabled={busy} title={`Отметить этап ${current} как ${status}`} onClick={() => void runStage(status)}>
+              <button
+                key={status}
+                disabled={busy}
+                title={`Отметить этап ${current} как ${status}`}
+                onClick={() => void runStage(status)}
+              >
                 {status}
               </button>
             ))}
-            <input placeholder={`этап ${current} ок`} size={14} value={phrase} onChange={(e) => setPhrase(e.target.value)} />
+            <input
+              placeholder={`этап ${current} ок`}
+              size={14}
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+            />
             <button className="primary" disabled={busy} onClick={() => void runApprove()}>
               approve
             </button>
@@ -342,4 +453,4 @@ export function Detail({ id, job, onJobEnd, onClosed, onStart, onRefresh }: Deta
       </button>
     </div>
   );
-}
+};

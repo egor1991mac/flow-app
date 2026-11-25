@@ -1,19 +1,24 @@
 "use client";
 
-import { useState } from "react";
 import { useLazyQuery } from "@apollo/client";
+import { useState } from "react";
+
 import { QUERY_SEARCH } from "@/lib/graphql/documents";
+
 import type { SearchResponse } from "@/lib/types";
+import type { FC } from "react";
 
 interface MemorySearchProps {
   onSelect: (taskId: string) => void;
 }
 
-export function MemorySearch({ onSelect }: MemorySearchProps) {
+export const MemorySearch: FC<MemorySearchProps> = ({ onSelect }) => {
   const [q, setQ] = useState("");
   const [res, setRes] = useState<SearchResponse | null>(null);
   const [open, setOpen] = useState(false);
-  const [runSearch] = useLazyQuery<{ search: SearchResponse }, { q: string }>(QUERY_SEARCH, { fetchPolicy: "network-only" });
+  const [runSearch] = useLazyQuery<{ search: SearchResponse }, { q: string }>(QUERY_SEARCH, {
+    fetchPolicy: "network-only",
+  });
 
   const run = async () => {
     if (!q.trim()) {
@@ -33,7 +38,9 @@ export function MemorySearch({ onSelect }: MemorySearchProps) {
         placeholder="поиск по памяти задач (ветор)…"
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") void run();
+          if (e.key === "Enter") {
+            void run();
+          }
         }}
       />
       <button className={open ? "" : "primary"} onClick={() => void run()}>
@@ -67,4 +74,4 @@ export function MemorySearch({ onSelect }: MemorySearchProps) {
       ) : null}
     </div>
   );
-}
+};

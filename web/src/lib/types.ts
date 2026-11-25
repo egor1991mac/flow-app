@@ -1,4 +1,12 @@
-export type { Task, TaskStatus, TaskType, StagesFile, Stage, StageStatus, Approval } from "../../../flow-core/src/types.ts";
+export type {
+  Task,
+  TaskStatus,
+  TaskType,
+  StagesFile,
+  Stage,
+  StageStatus,
+  Approval,
+} from "../../../flow-core/src/types.ts";
 
 export interface BranchRow {
   repo: string;

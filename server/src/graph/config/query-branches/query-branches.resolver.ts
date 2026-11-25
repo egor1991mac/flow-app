@@ -1,4 +1,4 @@
- import type { GQLContext } from "../../../types/core.ts";
+import type { GQLContext } from "../../../types/core.ts";
 
 export const queryBranchesResolver = {
   Query: {

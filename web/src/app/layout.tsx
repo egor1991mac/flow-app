@@ -1,18 +1,26 @@
-import type { Metadata } from "next";
 import { ApolloProvider } from "@/lib/apollo/client";
+
+import type { Metadata } from "next";
+import type { FC, ReactNode } from "react";
+
 import "./globals.css";
+
+interface RootLayoutProps {
+  children: ReactNode;
+}
 
 export const metadata: Metadata = {
   title: "flow — задачи, этапы, память",
-  description: "UI и API для управления задачами REALT: дерево задач, этапы, векторный поиск по памяти",
+  description:
+    "UI и API для управления задачами REALT: дерево задач, этапы, векторный поиск по памяти",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="ru">
-      <body>
-        <ApolloProvider>{children}</ApolloProvider>
-      </body>
-    </html>
-  );
-}
+const RootLayout: FC<RootLayoutProps> = ({ children }) => (
+  <html lang="ru">
+    <body>
+      <ApolloProvider>{children}</ApolloProvider>
+    </body>
+  </html>
+);
+
+export default RootLayout;

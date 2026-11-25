@@ -41,7 +41,8 @@ const operations: Array<{ Query?: Record<string, unknown>; Mutation?: Record<str
   queryHealthResolver,
 ];
 
-const pick = (key: "Query" | "Mutation") => Object.assign({}, ...operations.map((op) => op[key] ?? {}));
+const pick = (key: "Query" | "Mutation") =>
+  Object.assign({}, ...operations.map((op) => op[key] ?? {}));
 
 export const resolvers = {
   Query: pick("Query"),

@@ -1,9 +1,12 @@
 "use client";
 
 import { useMutation } from "@apollo/client";
-import type { InvokeResult, StartResult, Task } from "@/lib/types";
-import { displayName } from "@/lib/stages";
+
 import { MUTATION_FINISH_TASK, MUTATION_START_TASK } from "@/lib/graphql/documents";
+import { displayName } from "@/lib/stages";
+
+import type { InvokeResult, StartResult, Task } from "@/lib/types";
+import type { FC, MouseEvent } from "react";
 
 interface TreeProps {
   tasks: Task[];
@@ -13,22 +16,36 @@ interface TreeProps {
   onFinish: (id: string) => void;
 }
 
-export function Tree({ tasks, selected, onSelect, onStart, onFinish }: TreeProps) {
-  const [startMutation] = useMutation<{ startTask: StartResult }, { id: string; start: boolean }>(MUTATION_START_TASK);
-  const [finishMutation] = useMutation<{ finishTask: InvokeResult }, { id: string; yes?: boolean; dryRun?: boolean }>(MUTATION_FINISH_TASK);
+export const Tree: FC<TreeProps> = ({ tasks, selected, onSelect, onStart, onFinish }) => {
+  const [startMutation] = useMutation<{ startTask: StartResult }, { id: string; start: boolean }>(
+    MUTATION_START_TASK
+  );
+  const [finishMutation] = useMutation<
+    { finishTask: InvokeResult },
+    { id: string; yes?: boolean; dryRun?: boolean }
+  >(MUTATION_FINISH_TASK);
 
   const byId = Object.fromEntries(tasks.map((t) => [t.id, t]));
   const features = tasks.filter((t) => t.type === "story");
   const roots = [...features];
   const childIds = new Set<string>();
   for (const t of tasks) {
-    if (t.parentId && byId[t.parentId] && byId[t.parentId]!.type === "story") childIds.add(t.id);
+    const parent = t.parentId ? byId[t.parentId] : undefined;
+    if (parent?.type === "story") {
+      childIds.add(t.id);
+    }
   }
-  for (const t of tasks) if (t.type !== "story" && !childIds.has(t.id)) roots.push(t);
+  for (const t of tasks) {
+    if (t.type !== "story" && !childIds.has(t.id)) {
+      roots.push(t);
+    }
+  }
 
-  const start = async (e: React.MouseEvent, t: Task) => {
+  const start = async (e: MouseEvent, t: Task) => {
     e.stopPropagation();
-    if (!confirm(`Запустить окружение ${t.id}?`)) return;
+    if (!confirm(`Запустить окружение ${t.id}?`)) {
+      return;
+    }
     const res = await startMutation({ variables: { id: t.id, start: true } });
     const result = res.data?.startTask;
     if (!result?.jobId) {
@@ -38,11 +55,13 @@ export function Tree({ tasks, selected, onSelect, onStart, onFinish }: TreeProps
     onStart(t.id);
   };
 
-  const finish = async (e: React.MouseEvent, t: Task) => {
+  const finish = async (e: MouseEvent, t: Task) => {
     e.stopPropagation();
     const dry = await finishMutation({ variables: { id: t.id, dryRun: true } });
     const text = (dry.data?.finishTask.output ?? []).join("\n");
-    if (!confirm(`Закрыть ${t.id}?\n\n${text}\n\nУдалить локальное окружение?`)) return;
+    if (!confirm(`Закрыть ${t.id}?\n\n${text}\n\nУдалить локальное окружение?`)) {
+      return;
+    }
     const r = await finishMutation({ variables: { id: t.id, yes: true } });
     if (!r.data?.finishTask.ok) {
       alert(r.data?.finishTask.error ?? "не удалось закрыть");
@@ -88,13 +107,11 @@ export function Tree({ tasks, selected, onSelect, onStart, onFinish }: TreeProps
           {node(f)}
           {f.type === "story" && (
             <div className="children">
-              {tasks
-                .filter((t) => t.parentId === f.id)
-                .map((k) => node(k))}
+              {tasks.filter((t) => t.parentId === f.id).map((k) => node(k))}
             </div>
           )}
         </div>
       ))}
     </>
   );
-}
+};

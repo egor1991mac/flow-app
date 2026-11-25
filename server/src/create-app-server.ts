@@ -10,7 +10,9 @@ export const createAppServer = async () => {
   app.use(
     "/graphql",
     express.json({ limit: "1mb" }),
-    expressMiddleware(apollo, { context: async () => ({ dataSources: { flowApi: getDataSources() } }) }),
+    expressMiddleware(apollo, {
+      context: async () => ({ dataSources: { flowApi: getDataSources() } }),
+    })
   );
 
   return app;
