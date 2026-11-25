@@ -1,0 +1,1 @@
+{"extends": "./tsconfig.json", "compilerOptions": {"typeRoots": ["/Users/egor1991egorovmacgmail.com/Documents/work/www/node_modules/@types"]}}

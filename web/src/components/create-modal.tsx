@@ -56,7 +56,11 @@ export function CreateModal({ open, onClose, onCreated }: CreateModalProps) {
   const [msg, setMsg] = useState("");
 
   const { data: configData } = useQuery<{ config: AppConfig }>(QUERY_CONFIG, { skip: !open });
-  const { data: branchesData } = useQuery<{ branchNames: string[] }>(QUERY_BRANCH_NAMES, { skip: !open });
+  const parentForBase = /^[A-Z]+-\d+$/i.test(parentId.trim()) ? parentId.trim() : null;
+  const { data: branchesData } = useQuery<{ branchNames: string[] }, { parentId: string | null }>(QUERY_BRANCH_NAMES, {
+    skip: !open,
+    variables: { parentId: parentForBase },
+  });
   const [loadIntake] = useLazyQuery<{ intake: IntakeResponse }, { input: string }>(QUERY_INTAKE, { fetchPolicy: "network-only" });
   const [createMutation] = useMutation<{ createTask: InvokeResult }, { input: CreateTaskInput }>(MUTATION_CREATE_TASK);
   const [switchMutation] = useMutation<{ switchTask: InvokeResult }, { input: SwitchTaskInput }>(MUTATION_SWITCH_TASK);

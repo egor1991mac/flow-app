@@ -136,7 +136,7 @@ export function taskBranches(task: { repos: string[]; branch: string; id: string
   });
 }
 
-export function branchNames(): string[] {
+export function branchNames(parentId?: string | null): string[] {
   const config = readConfig(META);
   const names = new Set<string>();
   for (const repo of Object.keys(config.repos)) {
@@ -148,7 +148,12 @@ export function branchNames(): string[] {
       if (name !== "HEAD") names.add(name);
     }
   }
-  return [...names].sort();
+  const all = [...names];
+  if (!parentId) return all.sort();
+  const parentBranch = readRegistry(META).tasks[parentId]?.branch ?? null;
+  return all
+    .filter((name) => name === "stage" || name.includes(parentId) || name === parentBranch)
+    .sort((a, b) => Number(b === parentBranch) - Number(a === parentBranch) || a.localeCompare(b));
 }
 
 export interface CreateTaskInput {

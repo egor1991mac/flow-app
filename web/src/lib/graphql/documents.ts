@@ -161,8 +161,8 @@ export const QUERY_CONFIG = gql`
 `;
 
 export const QUERY_BRANCH_NAMES = gql`
-  query BranchNames {
-    branchNames
+  query BranchNames($parentId: String) {
+    branchNames(parentId: $parentId)
   }
 `;
 

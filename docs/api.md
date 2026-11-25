@@ -15,7 +15,7 @@
 | `taskJournal` | `taskId: String!` | хвост `journal.jsonl` + `decisions.jsonl` (по 50) |
 | `taskBranches` | `taskId: String!` | ветка и основа по репозиториям со ссылками GitLab |
 | `config` | — | конфиг `.orca-flow/config.json` |
-| `branchNames` | — | имена веток основных клонов (heads + origin) |
+| `branchNames` | `parentId: String` | имена веток основных клонов (heads + origin); с `parentId` — только ветки этой Фичи и `stage` |
 | `intake` | `input: String!` | превью задачи из YouTrack (ссылка или ID) |
 | `globalStages` | — | глобальный этап 0 |
 | `job` | `id: String!` | `{log, done, code}` фоновой job |

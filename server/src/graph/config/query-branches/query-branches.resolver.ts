@@ -1,7 +1,8 @@
-import type { GQLContext } from "../../../types/core.ts";
+ import type { GQLContext } from "../../../types/core.ts";
 
 export const queryBranchesResolver = {
   Query: {
-    branchNames: (_parent: unknown, _args: unknown, ctx: GQLContext) => ctx.dataSources.flowApi.getBranchNames(),
+    branchNames: (_parent: unknown, args: { parentId?: string | null }, ctx: GQLContext) =>
+      ctx.dataSources.flowApi.getBranchNames(args.parentId),
   },
 };

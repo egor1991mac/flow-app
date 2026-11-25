@@ -9,6 +9,9 @@ const nextConfig = {
   async rewrites() {
     return [{ source: "/graphql", destination: `${apiUrl}/graphql` }];
   },
+  async headers() {
+    return [{ source: "/", headers: [{ key: "Cache-Control", value: "no-store" }] }];
+  },
 };
 
 export default nextConfig;

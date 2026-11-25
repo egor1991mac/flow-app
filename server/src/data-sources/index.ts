@@ -30,7 +30,7 @@ export interface FlowApi {
   getTaskBranches(taskId: string): BranchRow[] | null;
   getGlobalStages(): unknown;
   getConfig(): unknown;
-  getBranchNames(): string[];
+  getBranchNames(parentId?: string | null): string[];
   getJob(id: string): Job | null;
   search(q: string): { ok: boolean; indexed: number; results: SearchHit[] };
   intake(input: string): IntakeResult;
@@ -82,8 +82,8 @@ export const getDataSources = (): FlowApi => ({
     return readConfig(META);
   },
 
-  getBranchNames() {
-    return branchNames();
+  getBranchNames(parentId?) {
+    return branchNames(parentId);
   },
 
   getJob(id) {

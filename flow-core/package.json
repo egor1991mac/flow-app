@@ -1,0 +1,1 @@
+{"name": "flow-core", "version": "0.1.0", "private": true, "type": "module", "description": "Портативное ядро orca-flow: домен, state machine этапов, гейты, стор. Без git/docker/orca импортов.", "exports": {"./types": "./src/types.ts", "./store": "./src/store.ts"}, "scripts": {"typecheck": "tsc --noEmit"}}
