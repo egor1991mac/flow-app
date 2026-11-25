@@ -11,6 +11,7 @@ export interface GitPort {
   isAncestor(path: string, branch: string, target: string): boolean;
   revParseVerify(path: string, ref: string): boolean;
   forEachRef(path: string, pattern: string): string[];
+  searchRefs(path: string, part: string): string[];
   diffNames(path: string, from: string, to: string): string[];
   addAll(path: string): void;
   resetFile(path: string, file: string): void;

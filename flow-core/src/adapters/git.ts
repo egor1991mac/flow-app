@@ -54,6 +54,14 @@ export const gitAdapter: GitPort = {
   forEachRef(path, pattern) {
     return git(["-C", path, "for-each-ref", "--format=%(refname:short)", pattern]).stdout.split("\n").filter(Boolean);
   },
+  searchRefs(path, part) {
+    const needle = part.trim().toLowerCase();
+    const refs = git(["-C", path, "for-each-ref", "--format=%(refname:short)", "refs/heads/*", "refs/remotes/origin/*"])
+      .stdout.split("\n")
+      .filter(Boolean);
+    if (!needle) return refs;
+    return refs.filter((ref) => ref.toLowerCase().includes(needle));
+  },
   diffNames(path, from, to) {
     return git(["-C", path, "diff", "--name-only", from, to]).stdout.split("\n").filter(Boolean);
   },

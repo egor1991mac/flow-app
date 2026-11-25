@@ -5,10 +5,20 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runCli } from "../../../flow-core/src/cli.ts";
 import type { CliDeps } from "../../../flow-core/src/cli.ts";
-import { readRegistry, readConfig, stagesPath, globalStagesPath, readStages } from "../../../flow-core/src/store.ts";
+import {
+  readRegistry,
+  readConfig,
+  stagesPath,
+  globalStagesPath,
+  readStages,
+} from "../../../flow-core/src/store.ts";
 import { branchName, cleanSummary } from "../../../flow-core/src/naming.ts";
 import { intakeId, typeKind } from "../../../flow-core/src/intake.ts";
-import { issueField, issueAttribute, youtrackAdapter } from "../../../flow-core/src/adapters/youtrack.ts";
+import {
+  issueField,
+  issueAttribute,
+  youtrackAdapter,
+} from "../../../flow-core/src/adapters/youtrack.ts";
 import { gitAdapter } from "../../../flow-core/src/adapters/git.ts";
 import { dockerAdapter } from "../../../flow-core/src/adapters/docker.ts";
 import { hostsAdapter } from "../../../flow-core/src/adapters/hosts.ts";
@@ -16,7 +26,8 @@ import { orcaSpace, noopSpace, orcaAvailable } from "../../../flow-core/src/adap
 import { opencodeAgent } from "../../../flow-core/src/adapters/agent-opencode.ts";
 import type { TaskType } from "../../../flow-core/src/types.ts";
 
-export const HOME = process.env.FLOW_HOME ?? path.join(process.env.HOME ?? "", "orca/workspaces/all-projects");
+export const HOME =
+  process.env.FLOW_HOME ?? path.join(process.env.HOME ?? "", "orca/workspaces/all-projects");
 export const META = path.join(HOME, ".orca-flow");
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 export const FLOW_BIN = path.join(ROOT, "flow-core/bin/flow.mjs");
@@ -109,7 +120,12 @@ export interface BranchRow {
   baseUrl: string | null;
 }
 
-export function taskBranches(task: { repos: string[]; branch: string; id: string; bases?: Record<string, string> }): BranchRow[] {
+export function taskBranches(task: {
+  repos: string[];
+  branch: string;
+  id: string;
+  bases?: Record<string, string>;
+}): BranchRow[] {
   const config = readConfig(META);
   return task.repos.map((repo) => {
     const clone = path.join(config.mainRoot, repo);
@@ -120,9 +136,11 @@ export function taskBranches(task: { repos: string[]; branch: string; id: string
       if (same.length === 1) branch = same[0];
     }
     const stored = task.bases?.[repo] ?? null;
-    const created = stored || !exists
-      ? null
-      : (gitAdapter.branchCreatedFrom(clone, branch) ?? gitAdapter.branchCreatedFrom(clone, task.branch));
+    const created =
+      stored || !exists
+        ? null
+        : gitAdapter.branchCreatedFrom(clone, branch) ??
+          gitAdapter.branchCreatedFrom(clone, task.branch);
     const rawBase = stored ?? created;
     const base = rawBase && rawBase !== "HEAD" ? rawBase.replace(/^origin\//, "") : null;
     const web = exists ? webUrl(gitAdapter.remoteUrl(clone)) : null;
@@ -142,8 +160,7 @@ export function branchNames(parentId?: string | null): string[] {
   for (const repo of Object.keys(config.repos)) {
     const clone = path.join(config.mainRoot, repo);
     if (!fs.existsSync(clone)) continue;
-    for (const ref of gitAdapter.forEachRef(clone, "refs/heads/*")) names.add(ref);
-    for (const ref of gitAdapter.forEachRef(clone, "refs/remotes/origin/*")) {
+    for (const ref of gitAdapter.searchRefs(clone, parentId ?? "")) {
       const name = ref.replace(/^origin\//, "");
       if (name !== "HEAD") names.add(name);
     }
@@ -151,9 +168,9 @@ export function branchNames(parentId?: string | null): string[] {
   const all = [...names];
   if (!parentId) return all.sort();
   const parentBranch = readRegistry(META).tasks[parentId]?.branch ?? null;
-  return all
-    .filter((name) => name === "stage" || name.includes(parentId) || name === parentBranch)
-    .sort((a, b) => Number(b === parentBranch) - Number(a === parentBranch) || a.localeCompare(b));
+  return [...new Set([...all, "stage"])].sort(
+    (a, b) => Number(b === parentBranch) - Number(a === parentBranch) || a.localeCompare(b)
+  );
 }
 
 export interface CreateTaskInput {
@@ -181,7 +198,11 @@ export function createTask(b: CreateTaskInput): CreateTaskResult {
   const regNow = readRegistry(META);
   const parentKnown = parentId ? regNow.tasks[parentId] : null;
   if (parentKnown && parentKnown.type !== "story") {
-    return { ok: false, output: [], error: `${parentId} есть в реестре, но это ${parentKnown.type}, а не Фича` };
+    return {
+      ok: false,
+      output: [],
+      error: `${parentId} есть в реестре, но это ${parentKnown.type}, а не Фича`,
+    };
   }
   const needFeature = b.type !== "story" && (!parentId || !parentKnown);
   const writeFixture = (obj: Record<string, unknown>) => {
@@ -205,7 +226,16 @@ export function createTask(b: CreateTaskInput): CreateTaskResult {
         branchName: branchName(autoFeature, "story", fSummary),
         parentId: null,
       });
-      const featureRes = invoke(["new", autoFeature, "--type", "story", "--repos", b.repos, "--fixture", ffx]);
+      const featureRes = invoke([
+        "new",
+        autoFeature,
+        "--type",
+        "story",
+        "--repos",
+        b.repos,
+        "--fixture",
+        ffx,
+      ]);
       if (!featureRes.ok) return featureRes;
       parentId = autoFeature;
     }
@@ -247,13 +277,20 @@ export function switchTask(b: SwitchTaskInput): InvokeResult {
   if (!b.id) return { ok: false, output: [], error: "укажи ID задачи" };
   const name = branchName(b.id, (b.type ?? "task") as TaskType, b.summary || b.id);
   return invoke([
-    "switch", name,
-    "--from", b.from || "stage",
-    "--repos", b.repos,
-    "--id", b.id,
-    "--type", b.type ?? "task",
-    "--summary", b.summary || b.id,
-    "--description", b.description || "",
+    "switch",
+    name,
+    "--from",
+    b.from || "stage",
+    "--repos",
+    b.repos,
+    "--id",
+    b.id,
+    "--type",
+    b.type ?? "task",
+    "--summary",
+    b.summary || b.id,
+    "--description",
+    b.description || "",
     ...(b.parentId ? ["--parent", b.parentId] : []),
   ]);
 }
@@ -279,10 +316,15 @@ export function intakePreview(input: string): IntakeResult {
   if (!id) return { ok: false, error: "не удалось разобрать ID из ссылки" };
   const issue = youtrackAdapter.issueView(id) as { idReadable?: string } | null;
   if (!issue || issue.idReadable !== id) {
-    return { ok: false, error: `${id}: YouTrack недоступен или задача не найдена (проверь VPN/авторизацию)` };
+    return {
+      ok: false,
+      error: `${id}: YouTrack недоступен или задача не найдена (проверь VPN/авторизацию)`,
+    };
   }
   const parents = youtrackAdapter.issueParents(id);
-  const links = youtrackAdapter.issueSubtaskLinks ? youtrackAdapter.issueSubtaskLinks(id) : { inward: parents, outward: [], relates: [] };
+  const links = youtrackAdapter.issueSubtaskLinks
+    ? youtrackAdapter.issueSubtaskLinks(id)
+    : { inward: parents, outward: [], relates: [] };
   const storiesOf = (ids: string[]) =>
     ids.filter((c) => {
       const ci = youtrackAdapter.issueView(c);
@@ -300,16 +342,20 @@ export function intakePreview(input: string): IntakeResult {
   } else if (inwardStories.length === 1) {
     parentId = inwardStories[0];
     parentSource = "Subtask";
-  } else if (inwardStories.length > 1) parentError = `несколько Stories-родителей: ${inwardStories.join(", ")}`;
+  } else if (inwardStories.length > 1)
+    parentError = `несколько Stories-родителей: ${inwardStories.join(", ")}`;
   else if (outwardStories.length === 1) {
     parentId = outwardStories[0];
     parentSource = "Subtask";
-  } else if (outwardStories.length > 1) parentError = `несколько Stories-родителей: ${outwardStories.join(", ")}`;
+  } else if (outwardStories.length > 1)
+    parentError = `несколько Stories-родителей: ${outwardStories.join(", ")}`;
   else if (relatedStories.length === 1) {
     parentId = relatedStories[0];
     parentSource = "Relates (проверь Фичу)";
-  } else if (relatedStories.length > 1) parentError = `несколько Stories в Relates: ${relatedStories.join(", ")}`;
-  else if (parents.length > 0) parentError = `родитель найден, но это не Story: ${parents.join(", ")}`;
+  } else if (relatedStories.length > 1)
+    parentError = `несколько Stories в Relates: ${relatedStories.join(", ")}`;
+  else if (parents.length > 0)
+    parentError = `родитель найден, но это не Story: ${parents.join(", ")}`;
   const summary = issueAttribute(issue, "summary");
   return {
     ok: true,
@@ -327,10 +373,4 @@ export function intakePreview(input: string): IntakeResult {
   };
 }
 
-export {
-  readRegistry,
-  readConfig,
-  stagesPath,
-  globalStagesPath,
-  readStages,
-};
+export { readRegistry, readConfig, stagesPath, globalStagesPath, readStages };
