@@ -1,0 +1,3 @@
+extend type Query {
+  task(id: String!): Task
+}

@@ -1,0 +1,3 @@
+extend type Mutation {
+  startTask(id: String!, start: Boolean): StartResult!
+}

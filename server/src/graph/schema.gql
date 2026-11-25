@@ -1,0 +1,220 @@
+scalar JSON
+
+type Query {
+  _empty: String
+}
+
+type Mutation {
+  _empty: String
+}
+
+type Task {
+  id: String!
+  type: String!
+  parentId: String
+  parentExternal: Boolean!
+  titleRu: String!
+  description: String
+  branch: String!
+  workspacePath: String!
+  repos: [String!]!
+  activeRepos: [String!]!
+  slot: Int
+  dockerProject: String!
+  ports: JSON
+  endpoints: JSON
+  status: String!
+  mode: String
+  bases: JSON
+  createdAt: String!
+  children: [String!]!
+}
+
+type Evidence {
+  id: String!
+  text: String!
+  checked: Boolean!
+}
+
+type StageRun {
+  runId: String!
+  startedAt: String!
+  finishedAt: String
+  report: String
+  evidence: [Evidence!]
+}
+
+type Approval {
+  stage: Int!
+  approvedBy: String!
+  approvedAt: String!
+  phrase: String!
+  source: String!
+  runId: String!
+}
+
+type Stage {
+  stage: Int!
+  status: String!
+  runs: [StageRun!]!
+  approvals: [Approval!]!
+}
+
+type StagesFile {
+  version: Int!
+  scope: String!
+  taskId: String
+  currentStage: Int
+  stages: [Stage!]!
+}
+
+type Decision {
+  id: String!
+  ts: String!
+  stage: Int
+  point: String!
+  input: String!
+  choice: String!
+  why: String
+  actor: String!
+}
+
+type JournalEvent {
+  id: String!
+  ts: String!
+  event: String!
+  details: JSON
+}
+
+type JournalData {
+  journal: [JournalEvent!]!
+  decisions: [Decision!]!
+}
+
+type Branch {
+  repo: String!
+  branch: String!
+  url: String
+  base: String
+  baseUrl: String
+}
+
+type Intake {
+  ok: Boolean!
+  id: String
+  type: String
+  ytType: String
+  state: String
+  summary: String
+  description: String
+  parentId: String
+  parentError: String
+  parentSource: String
+  branchName: String
+  titleRu: String
+  error: String
+}
+
+type Job {
+  log: String!
+  done: Boolean!
+  code: Int
+}
+
+type SearchHit {
+  taskId: String!
+  kind: String!
+  snippet: String!
+  score: Float!
+  ts: String
+}
+
+type SearchResponse {
+  ok: Boolean!
+  indexed: Int!
+  results: [SearchHit!]!
+}
+
+type Health {
+  ok: Boolean!
+  home: String!
+}
+
+type InvokeResult implements InvokeOutcome {
+  ok: Boolean!
+  output: [String!]!
+  error: String
+  err: [String!]
+}
+
+interface InvokeOutcome {
+  ok: Boolean!
+  output: [String!]!
+  error: String
+  err: [String!]
+}
+
+type StartResult implements InvokeOutcome {
+  ok: Boolean!
+  output: [String!]!
+  error: String
+  err: [String!]
+  jobId: String
+}
+
+type CreateTaskResult implements InvokeOutcome {
+  ok: Boolean!
+  output: [String!]!
+  error: String
+  err: [String!]
+  autoFeature: String
+}
+
+type Config {
+  version: Int!
+  workspacesRoot: String!
+  donorsRoot: String!
+  mainRoot: String!
+  toolkitDir: String!
+  certs: JSON
+  domains: JSON
+  ports: JSON
+  offsetStep: Int!
+  maxSlots: Int!
+  healthcheck: JSON
+  repos: JSON!
+}
+
+input CreateTaskInput {
+  id: String!
+  type: String!
+  repos: String
+  parentId: String
+  summary: String
+  description: String
+  fromBranch: String
+  fromBase: Boolean
+}
+
+input SwitchTaskInput {
+  id: String!
+  repos: String
+  type: String
+  summary: String
+  description: String
+  parentId: String
+  from: String
+}
+
+input StageInput {
+  id: String!
+  n: Int!
+  status: String!
+  report: String
+}
+
+input ApproveStageInput {
+  id: String!
+  n: Int!
+  phrase: String!
+}

@@ -1,0 +1,20 @@
+{
+  "name": "flow-web",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 17001",
+    "build": "next build",
+    "start": "next start -p 17000",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@apollo/client": "^3.14.1",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3"
+  }
+}
