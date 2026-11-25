@@ -14,8 +14,8 @@ npm run build && npm run serve   # UI http://localhost:17000, api :17100
 ```
 
 `npm run dev` перезаписывает `web/.next` dev-сборкой — перед `npm run serve` нужен свежий
-`npm run build`. Ядро `flow-core` в репозиторий не входит: это симлинк на отдельный проект
-`~/orca/workspaces/docker-worktree/flow-core`, без него `server` не запустится.
+`npm run build`. Ядро `flow-core/` лежит в репозитории: это копия ядра orca-flow, оригинал —
+`~/orca/workspaces/docker-worktree/flow-core`, из него копия синхронизируется.
 
 Реестр берётся из `FLOW_HOME` (по умолчанию `~/orca/workspaces/all-projects`).
 
@@ -39,12 +39,11 @@ npm run build && npm run serve   # UI http://localhost:17000, api :17100
 package.json      npm workspaces (server, web) + скрипты dev/build/serve/typecheck
 server/           Apollo BFF: schema.gql, <домен>/query-*|mutation-*, data-sources, server.ts
 web/              Next.js: app, components, lib (apollo-клиент, graphql-документы, типы)
-flow-core -> …    симлинк на ядро (не копия)
+flow-core/        ядро orca-flow (копия в репозитории)
 ```
 
-Доменная логика (реестр, этапы, git, docker, youtrack) не копируется — импортируется из
-`flow-core/src` (симлинк на ядро в `~/orca/workspaces/docker-worktree/flow-core`);
-мутации реестра идут только через `runCli`.
+Доменная логика (реестр, этапы, git, docker, youtrack) не копируется в `server`/`web` — она
+импортируется из `flow-core/src` (копия ядра в проекте); мутации реестра идут только через `runCli`.
 
 ## Документация
 

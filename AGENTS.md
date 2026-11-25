@@ -1,8 +1,9 @@
 # AGENTS.md — flow-app
 
-Next.js + GraphQL BFF (Apollo Server) — UI и API для `flow-core`. Отдельный проект, ядро не дублируется —
-импортируется напрямую из `flow-core/src` (папка `flow-core` — симлинк на
-`~/orca/workspaces/docker-worktree/flow-core`, это не копия; отдельный git/ветки у неё не заводятся).
+Next.js + GraphQL BFF (Apollo Server) — UI и API для `flow-core`. Ядро лежит в проекте папкой
+`flow-core/` — это копия ядра orca-flow (оригинал в `~/orca/workspaces/docker-worktree/flow-core`),
+версионируется вместе с проектом и импортируется напрямую из `flow-core/src`. Правится ядро в
+оригинале, сюда копируется; отдельных git-веток у копии не заводят.
 
 ## Расположение
 
@@ -11,7 +12,7 @@ flow-app/
 ├─ AGENTS.md            этот файл
 ├─ TASK.md              техническое задание проекта
 ├─ docs/                README, architecture, api
-├─ flow-core -> …      симлинк на ядро (не копия)
+├─ flow-core/           ядро orca-flow (копия, лежит в репозитории)
 ├─ package.json         npm workspaces (server, web) + общие скрипты
 ├─ server/              Apollo BFF, самостоятельный пакет
 │  ├─ package.json      @apollo/server, express, graphql
@@ -65,7 +66,7 @@ npm run build
   (пример — локальный эмбеддер в `server/src/data-sources/vector-api.ts`).
 - Новые зависимости не добавлять без явной просьбы пользователя.
 - Логику домена (этапы, реестр, git, docker) НЕ копировать сюда: импортировать из
-  `flow-core/src/*` (симлинк). Этот проект — только транспорт (GraphQL) и рендер.
+  `flow-core/src/*` (локальная копия ядра). Этот проект — только транспорт (GraphQL) и рендер.
 - Мутации реестра идут только через `runCli` (см. `invoke` в `server/src/data-sources/flow-api.ts`).
 - Новая операция — папка `server/src/graph/<домен>/<query|mutation>-<домен>-<поле>/` с `.gql` и
   `.resolver.ts`, регистрация в `server/src/graph/resolvers.ts`; общие типы — `server/src/graph/schema.gql`.

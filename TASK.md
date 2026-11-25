@@ -4,8 +4,8 @@
 
 Переписывание `flow-ui` (node:http + статика без фреймворка) на полноценный стек:
 Next.js — фронтенд, GraphQL BFF на Apollo Server — API, плюс векторная база по памяти задач.
-Проект лежит в `~/Documents/work/flow-app`; зависимость от ядра — симлинк `flow-core` внутри проекта
-на `~/orca/workspaces/docker-worktree/flow-core` (ядро не копируется).
+Проект лежит в `~/Documents/work/flow-app`; ядро — папка `flow-core/` внутри проекта
+(копия ядра orca-flow в `~/orca/workspaces/docker-worktree/flow-core`, лежит в репозитории).
 
 ## Требования
 

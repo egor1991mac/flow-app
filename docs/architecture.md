@@ -9,7 +9,7 @@ server/ (Apollo Server, src/graph)       — схема, резолверы, к�
         │
 server/src/data-sources/index.ts         — flowApi: deps для runCli, jobs, ветки, память
         │
-flow-core (flow-core/src, симлинк)       — реестр, этапы, naming, git/docker/youtrack адаптеры
+flow-core (flow-core/src, копия ядра)    — реестр, этапы, naming, git/docker/youtrack адаптеры
         │
 server/src/data-sources/vector-api.ts    — векторная база памяти (embed + store + search)
 ```
@@ -36,7 +36,7 @@ argv `runCli`, результат → объект GraphQL. UI не содерж
 ## Фоновые job
 
 `up --start` запускает контейнеры надолго и блокирует — поэтому сервер стартует дочерний
-процесс `flow-core/bin/flow.mjs` (`startJob`, путь — симлинк внутри проекта), пишет его вывод в
+процесс `flow-core/bin/flow.mjs` (`startJob`, путь внутри проекта), пишет его вывод в
 память (`jobs: Map`), а UI опрашивает `job(id)` каждые 700 мс вместе с `taskStages(taskId)`,
 чтобы статусы этапов красились онлайн.
 
