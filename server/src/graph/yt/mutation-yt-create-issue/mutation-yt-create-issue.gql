@@ -1,0 +1,19 @@
+extend type Mutation {
+  ytCreateIssue(input: YtCreateIssueInput!): YtCreated!
+}
+
+input YtCreateIssueInput {
+  summary: String!
+  description: String!
+  parentId: String!
+  assignee: String
+  estimation: String
+}
+
+type YtCreated {
+  ok: Boolean!
+  error: String
+  id: String
+  url: String
+  warnings: [String!]!
+}

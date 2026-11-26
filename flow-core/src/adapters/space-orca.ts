@@ -16,6 +16,36 @@ function orca(args: string[]): boolean {
   }
 }
 
+function orcaError(stdout: string, stderr: string): string {
+  const text = stdout.trim() || stderr.trim();
+  try {
+    const data = JSON.parse(text);
+    const error = data?.error;
+    if (typeof error === "string") return error;
+    if (error && typeof error.message === "string") return error.message;
+    if (typeof data?.message === "string") return data.message;
+  } catch {
+    return text.slice(0, 300) || "orca: нет ответа";
+  }
+  return text.slice(0, 300) || "orca: нет ответа";
+}
+
+function worktreeSelector(path: string): string {
+  const r = spawnSync("orca", ["repo", "show", "--repo", `path:${path}`, "--json"], {
+    encoding: "utf8",
+    timeout: 15000,
+  });
+  if (r.status === 0) {
+    try {
+      const id = JSON.parse(r.stdout)?.result?.repo?.id;
+      if (typeof id === "string" && id) return `id:${id}::${path}`;
+    } catch {
+      return `path:${path}`;
+    }
+  }
+  return `path:${path}`;
+}
+
 export const orcaSpace: SpacePort = {
   available: orcaAvailable,
   registerFolder(path) {
@@ -39,6 +69,52 @@ export const orcaSpace: SpacePort = {
   },
   launchAgent(path, prompt) {
     return orca(["agent", "launch", "--agent", "opencode", "--surface", "chat", "--worktree", `path:${path}`, "--prompt", prompt]);
+  },
+  listAgents(path) {
+    const r = spawnSync("orca", ["agent", "list", "--worktree", `path:${path}`, "--json"], {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 20000,
+    });
+    if (r.status !== 0) return [];
+    try {
+      const list = JSON.parse(r.stdout)?.result?.agents;
+      if (!Array.isArray(list)) return [];
+      return list.map((a: { title?: unknown; state?: unknown }) => ({
+        title: String(a?.title ?? ""),
+        state: String(a?.state ?? ""),
+      }));
+    } catch {
+      return [];
+    }
+  },
+  launchAgentResult(path, prompt) {
+    const r = spawnSync(
+      "orca",
+      [
+        "agent",
+        "launch",
+        "--agent",
+        "opencode",
+        "--surface",
+        "chat",
+        "--worktree",
+        worktreeSelector(path),
+        "--prompt",
+        prompt,
+        "--focus",
+        "--json",
+      ],
+      { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 30000 }
+    );
+    if (r.status !== 0) return { ok: false, error: orcaError(r.stdout ?? "", r.stderr ?? "") };
+    try {
+      const data = JSON.parse(r.stdout);
+      if (data?.ok === true) return { ok: true };
+      return { ok: false, error: orcaError(r.stdout, r.stderr ?? "") };
+    } catch {
+      return { ok: false, error: orcaError(r.stdout ?? "", r.stderr ?? "") };
+    }
   },
   hideRepo(path) {
     return orca(["repo", "hide", "--repo", `path:${path}`]);
@@ -66,6 +142,7 @@ export const noopSpace: SpacePort = {
   createTerminal: () => true,
   createTab: () => true,
   launchAgent: () => true,
+  launchAgentResult: () => ({ ok: false, error: "Orca недоступна" }),
   hideRepo: () => true,
   closeTerminals: () => {},
   closeTabs: () => {},

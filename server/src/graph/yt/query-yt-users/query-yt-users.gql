@@ -1,0 +1,14 @@
+extend type Query {
+  ytUsers(query: String, limit: Int): YtUsers!
+}
+
+type YtUser {
+  login: String!
+  name: String!
+}
+
+type YtUsers {
+  ok: Boolean!
+  error: String
+  users: [YtUser!]!
+}

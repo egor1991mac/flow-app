@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client";
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { CreateModal } from "@/components/create-modal/create-modal";
 import { Detail } from "@/components/detail/detail";
+import { ImageBatch } from "@/components/image-batch/image-batch";
 import { MemorySearch } from "@/components/memory-search/memory-search";
 import { Tree } from "@/components/tree/tree";
 import { MUTATION_START_TASK, QUERY_TASKS } from "@/lib/graphql/documents";
@@ -28,9 +30,17 @@ const Page: FC = () => {
   );
   const [selected, setSelected] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [job, setJob] = useState<ActiveJob | null>(null);
   const tasks = data?.tasks ?? [];
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("task");
+    if (id) {
+      setSelected(id);
+    }
+  }, []);
 
   const refresh = async () => {
     await refetch();
@@ -73,12 +83,16 @@ const Page: FC = () => {
             setVersion((v) => v + 1);
           }}
         />
+        <ImageBatch />
         <button className="refresh" onClick={() => void refresh()}>
           обновить
         </button>
         <button className="primary" onClick={() => setModalOpen(true)}>
           + задача
         </button>
+        <Link className="nav-link" href="/board">
+          борда
+        </Link>
       </header>
       <main>
         <aside>
@@ -100,6 +114,7 @@ const Page: FC = () => {
               onClosed={closeTask}
               onStart={startTask}
               onRefresh={refresh}
+              onEdit={setEditId}
             />
           ) : (
             <p className="empty">Выбери задачу слева.</p>
@@ -107,8 +122,12 @@ const Page: FC = () => {
         </section>
       </main>
       <CreateModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={modalOpen || editId !== null}
+        editId={editId}
+        onClose={() => {
+          setModalOpen(false);
+          setEditId(null);
+        }}
         onCreated={async (id) => {
           await refetch();
           setSelected(id);

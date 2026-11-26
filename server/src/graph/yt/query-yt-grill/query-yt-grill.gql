@@ -1,0 +1,8 @@
+extend type Query {
+  ytGrill(slug: String!): YtGrill!
+}
+
+type YtGrill {
+  path: String!
+  content: String!
+}

@@ -210,12 +210,12 @@ function repoPath(config: Config, ws: string, repo: string): string | null {
   return fs.existsSync(main) ? main : null;
 }
 
-function agentWorkdir(task: Task, config: Config): string {
-  for (const repo of task.repos) {
+function agentWorkdirs(task: Task, config: Config): Array<{ repo: string; dir: string }> {
+  const dirs = task.repos.flatMap((repo) => {
     const dir = repoPath(config, task.workspacePath, repo);
-    if (dir) return dir;
-  }
-  return task.workspacePath;
+    return dir ? [{ repo, dir }] : [];
+  });
+  return dirs.length > 0 ? dirs : [{ repo: "", dir: task.workspacePath }];
 }
 
 function branchLinks(deps: CliDeps, config: Config, repos: string[], ws: string, branch: string): string[] {
@@ -228,7 +228,7 @@ function branchLinks(deps: CliDeps, config: Config, repos: string[], ws: string,
   return links;
 }
 
-function agentPrompt(deps: CliDeps, task: Task, feature: Task | null): string {
+function agentPrompt(deps: CliDeps, task: Task, feature: Task | null, repo?: string): string {
   const config = readConfig(deps.metaDir);
   const ws = task.workspacePath;
   const repos = task.repos.map((r) => {
@@ -242,6 +242,7 @@ function agentPrompt(deps: CliDeps, task: Task, feature: Task | null): string {
     `Ветка задачи \`${task.branch}\`, репозитории: ${repos.join(", ")}`,
     ...branchLinks(deps, config, task.repos, ws, task.branch),
   ];
+  if (repo) lines.push(`Этот чат ведёт репозиторий ${repo}: правки только в нём, остальные репозитории задачи — в отдельных чатах.`);
   if (task.parentId) {
     const bases = Object.values(task.bases ?? {}).filter(Boolean);
     const parentBranches = [...new Set([...(feature ? [feature.branch] : []), ...bases])];
@@ -256,8 +257,9 @@ function agentPrompt(deps: CliDeps, task: Task, feature: Task | null): string {
 }
 
 function cmdAgent(deps: CliDeps, argv: string[]): void {
-  const id = argv[0];
-  if (!id) die(deps, "usage: flow agent <id>");
+  const { pos, flags } = parseFlags(argv);
+  const id = pos[0];
+  if (!id) die(deps, "usage: flow agent <id> [--force]");
   const registry = readRegistry(deps.metaDir);
   const task = registry.tasks[id];
   if (!task) die(deps, `task not found: ${id}`);
@@ -265,12 +267,26 @@ function cmdAgent(deps: CliDeps, argv: string[]): void {
   if (!fs.existsSync(ws)) die(deps, `workspace is missing: ${ws}`);
   const feature = task.parentId ? registry.tasks[task.parentId] ?? null : null;
   writeAgents(ws, task, feature);
-  const dir = agentWorkdir(task, readConfig(deps.metaDir));
-  if (dir === ws) deps.space.registerFolder(dir); // Orca запускает агента только в известном workspace
-  const prompt = agentPrompt(deps, task, feature);
-  const ok = deps.space.available() ? deps.space.launchAgent(dir, prompt) : deps.agent.launchChat(dir, prompt);
-  if (!ok) die(deps, "cannot launch agent (orca/opencode)");
-  deps.out(`агент запущен: ${dir}`);
+  const dirs = agentWorkdirs(task, readConfig(deps.metaDir));
+  const failed: string[] = [];
+  let launched = 0;
+  for (const { repo, dir } of dirs) {
+    const existing = deps.space.listAgents?.(dir) ?? [];
+    if (existing.length > 0 && !flags.force) {
+      deps.out(`сессия уже есть: ${repo || dir} — ${existing.map((a) => `«${a.title}» (${a.state})`).join(", ")}`);
+      continue;
+    }
+    if (dir === ws) deps.space.registerFolder(dir); // Orca запускает агента только в известном workspace
+    const prompt = agentPrompt(deps, task, feature, repo || undefined);
+    const ok = deps.space.available() ? deps.space.launchAgent(dir, prompt) : deps.agent.launchChat(dir, prompt);
+    if (!ok) failed.push(repo || dir);
+    else {
+      launched += 1;
+      deps.out(`агент запущен: ${dir}`);
+    }
+  }
+  if (failed.length > 0) die(deps, `cannot launch agent (orca/opencode): ${failed.join(", ")}`);
+  if (launched === 0 && dirs.length > 0) deps.out("новых сессий нет: у каждого репозитория уже есть чат (--force, чтобы открыть новый)");
 }
 
 function cmdUp(deps: CliDeps, argv: string[]): void {
@@ -336,6 +352,10 @@ function taskRepoDirs(config: Config, task: Task): Array<{ repo: string; dir: st
   return dirs;
 }
 
+function onlyRepo(dirs: Array<{ repo: string; dir: string }>, repo: unknown) {
+  return typeof repo === "string" && repo ? dirs.filter((d) => d.repo === repo) : dirs;
+}
+
 function commitSubject(task: Task): string {
   const withoutId = task.titleRu.replace(/^[A-Z]+-\d+\s*[:\u2014-]\s*/, "");
   return cleanSummary(withoutId).slice(0, 64);
@@ -365,7 +385,7 @@ function cmdCommit(deps: CliDeps, argv: string[]): void {
   const type = (flags.type as string) ?? COMMIT_TYPES[task.type];
   const subject = ((flags.subject as string) ?? commitSubject(task)).slice(0, 64);
   let committed = 0;
-  for (const { repo, dir } of taskRepoDirs(config, task)) {
+  for (const { repo, dir } of onlyRepo(taskRepoDirs(config, task), flags.repo)) {
     if (deps.git.statusPorcelain(dir).length === 0) continue;
     if (!commitRepo(deps, dir, type, subject)) die(deps, `${repo}: commit failed`);
     deps.out(`${repo}: ${type}: ${subject}`);
@@ -375,8 +395,9 @@ function cmdCommit(deps: CliDeps, argv: string[]): void {
 }
 
 function cmdMr(deps: CliDeps, argv: string[]): void {
-  const id = argv[0];
-  if (!id) die(deps, "usage: flow mr <id>");
+  const { pos, flags } = parseFlags(argv);
+  const id = pos[0];
+  if (!id) die(deps, "usage: flow mr <id> [--repo name]");
   const config = readConfig(deps.metaDir);
   const registry = readRegistry(deps.metaDir);
   const task = registry.tasks[id];
@@ -393,7 +414,7 @@ function cmdMr(deps: CliDeps, argv: string[]): void {
   const link = task.type === "story" ? "Сторя" : "Задача";
   const title = task.type === "story" ? `[${branch.replace(/^feature-/, "").replace(/-REALT-\d+$/, "")}]:${id}` : branch;
   const description = `${task.titleRu}\n\n${link}: https://youtrack.realt.by/issue/${id}`;
-  for (const { repo, dir } of taskRepoDirs(config, task)) {
+  for (const { repo, dir } of onlyRepo(taskRepoDirs(config, task), flags.repo)) {
     const push = spawnSync("git", ["-C", dir, "push", "-u", "origin", branch], { encoding: "utf8" });
     if (push.status !== 0) die(deps, `${repo}: push failed: ${(push.stderr ?? "").trim()}`);
     const mr = spawnSync(
@@ -642,6 +663,153 @@ function cmdSwitch(deps: CliDeps, argv: string[]): void {
   deps.out(`${id}: registered (simple mode, no worktree, no docker)`);
 }
 
+function cmdEdit(deps: CliDeps, argv: string[]): void {
+  const { pos, flags } = parseFlags(argv);
+  const id = pos[0];
+  if (!id) die(deps, "usage: flow edit <id> [--summary s] [--description d] [--mode worktree|simple] [--repos list]");
+  const config = readConfig(deps.metaDir);
+  const registry = readRegistry(deps.metaDir);
+  const task = registry.tasks[id];
+  if (!task) die(deps, `task not found: ${id}`);
+
+  const mode = (flags.mode === undefined ? task.mode ?? "worktree" : String(flags.mode)) as "worktree" | "simple";
+  if (mode !== "worktree" && mode !== "simple") die(deps, `unknown mode: ${String(flags.mode)}`);
+  const repos = flags.repos === undefined ? task.repos : resolveRepos(String(flags.repos), config, mode === "worktree");
+  if (repos.length === 0) die(deps, "no repositories selected");
+  const summary = flags.summary === undefined ? null : String(flags.summary).trim();
+  if (flags.summary !== undefined && !summary) die(deps, "summary cannot be empty");
+  const description = flags.description === undefined ? null : String(flags.description);
+
+  const wasWorktree = (task.mode ?? "worktree") === "worktree";
+  const added = repos.filter((r) => !task.repos.includes(r));
+  const removed = task.repos.filter((r) => !repos.includes(r));
+  const structural = added.length > 0 || removed.length > 0 || mode !== (task.mode ?? "worktree");
+  const ws = task.workspacePath;
+  const mainDir = (repo: string) => path.join(config.mainRoot, repo);
+  const donorDir = (repo: string) => path.join(config.donorsRoot, `${repo}.git`);
+  const wsDir = (repo: string) => path.join(ws, repo);
+  const baseOf = (repo: string) =>
+    (task.bases?.[repo] ?? config.repos[repo]?.baseBranch ?? "stage").replace(/^origin\//, "");
+
+  const removeWorktree = (repo: string) => {
+    const dir = wsDir(repo);
+    if (!fs.existsSync(dir)) return;
+    if (!deps.git.worktreeRemove(donorDir(repo), dir, false)) {
+      die(deps, `${repo}: cannot remove worktree ${dir}: ${deps.git.lastError ?? "unknown error"}`);
+    }
+    deps.out(`${repo}: worktree removed`);
+  };
+
+  const ensureWorktree = (repo: string) => {
+    const dir = wsDir(repo);
+    if (fs.existsSync(dir)) {
+      deps.out(`${repo}: worktree already exists`);
+      return;
+    }
+    const donor = donorDir(repo);
+    if (
+      !deps.git.revParseVerify(donor, `refs/heads/${task.branch}`) &&
+      deps.git.revParseVerify(mainDir(repo), `refs/heads/${task.branch}`) &&
+      !deps.git.fetchFrom(donor, mainDir(repo), task.branch)
+    ) {
+      die(deps, `${repo}: cannot copy ${task.branch} into the donor`);
+    }
+    const exists = deps.git.revParseVerify(donor, `refs/heads/${task.branch}`);
+    const base = baseOf(repo);
+    const start = exists ? task.branch : deps.git.revParseVerify(donor, `origin/${base}`) ? `origin/${base}` : base;
+    if (!deps.git.worktreeAdd(donor, task.branch, dir, start, !exists)) {
+      die(deps, `${repo}: cannot create worktree ${dir}: ${deps.git.lastError ?? "unknown error"}`);
+    }
+    if (!exists) task.bases = { ...(task.bases ?? {}), [repo]: start };
+    deps.out(`${repo}: worktree ${dir} on ${task.branch} (from ${start})`);
+  };
+
+  const requireCleanMain = (repo: string) => {
+    const dirty = deps.git.statusPorcelain(mainDir(repo));
+    if (dirty.length > 0) {
+      die(deps, `${repo}: main clone has uncommitted changes, commit or stash first: ${mainDir(repo)}`);
+    }
+  };
+
+  const mainToBase = (repo: string) => {
+    requireCleanMain(repo);
+    if (!deps.git.checkout(mainDir(repo), baseOf(repo))) {
+      die(deps, `${repo}: cannot return the main clone to ${baseOf(repo)}: ${deps.git.lastError ?? "unknown error"}`);
+    }
+  };
+
+  const mainToTask = (repo: string) => {
+    requireCleanMain(repo);
+    if (!deps.git.revParseVerify(mainDir(repo), `refs/heads/${task.branch}`)) {
+      deps.git.fetchFrom(mainDir(repo), donorDir(repo), task.branch);
+    }
+    if (!deps.git.checkoutNew(mainDir(repo), task.branch, baseOf(repo))) {
+      die(deps, `${repo}: cannot switch the main clone to ${task.branch}: ${deps.git.lastError ?? "unknown error"}`);
+    }
+  };
+
+  if (structural) {
+    if (task.status !== "active") die(deps, `${id} is not active: ${task.status}`);
+    for (const repo of added) {
+      if (!fs.existsSync(mainDir(repo))) die(deps, `main clone is missing: ${mainDir(repo)}`);
+      if (!fs.existsSync(donorDir(repo))) die(deps, `donor is missing: ${donorDir(repo)}`);
+    }
+    const toRemove = mode === "simple" ? task.repos : removed;
+    for (const repo of toRemove) {
+      const dir = wsDir(repo);
+      if (fs.existsSync(dir) && deps.git.statusPorcelain(dir).length > 0) {
+        die(deps, `${repo}: worktree has uncommitted changes: ${dir}`);
+      }
+    }
+    const compose = path.join(ws, "docker-compose.yml");
+    if (deps.docker.composePsRunning(task.dockerProject, compose)) {
+      if (!deps.docker.composeDown(task.dockerProject, compose, false)) {
+        die(deps, `cannot stop ${task.dockerProject}: ${deps.docker.lastError ?? "unknown error"}`);
+      }
+      deps.out(`${task.dockerProject}: stack stopped, volumes kept`);
+    }
+  }
+
+  lock(deps.metaDir);
+  try {
+    if (wasWorktree && mode === "simple") {
+      for (const repo of task.repos) removeWorktree(repo);
+      for (const repo of task.repos) {
+        if (fs.existsSync(mainDir(repo))) mainToTask(repo);
+      }
+    } else if (wasWorktree && mode === "worktree") {
+      for (const repo of removed) removeWorktree(repo);
+      for (const repo of added) ensureWorktree(repo);
+    } else if (mode === "worktree") {
+      for (const repo of task.repos) mainToBase(repo);
+      for (const repo of repos) ensureWorktree(repo);
+    } else {
+      for (const repo of removed) mainToBase(repo);
+      for (const repo of added) mainToTask(repo);
+    }
+
+    task.mode = mode;
+    task.repos = repos;
+    task.activeRepos = repos;
+    if (structural) {
+      task.slot = null;
+      task.ports = {};
+      task.endpoints = {};
+    }
+    if (summary) task.titleRu = `${id}: ${cleanSummary(summary)}`;
+    if (description !== null) task.description = description;
+    writeJsonAtomic(path.join(deps.metaDir, "state.json"), registry);
+  } finally {
+    unlock(deps.metaDir);
+  }
+
+  if (structural) {
+    deps.out(`${id}: mode=${mode}, repos=${repos.join(",")}`);
+    deps.out("env/compose пересоберутся на следующем Старте");
+  }
+  deps.out(`${id}: updated`);
+}
+
 function cmdDoctor(deps: CliDeps): void {
   let fails = 0;
   const ok = (m: string) => deps.out(`  ok    ${m}`);
@@ -707,10 +875,11 @@ const USAGE = `usage: flow <command> [options]
   new <id|url> --type story|task|bug [--repos list] [--fixture file] [--dry-run]
   up <id> [--start]      start (or plan) the Docker stack of a task
   agent <id>             launch opencode agent in the task workspace with task context
-  commit <id> [--subject text] [--type fix]   commit changes in every repo of the task
-  mr <id>                push the task branch and open a GitLab MR
+  commit <id> [--subject text] [--type fix] [--repo name]   commit changes in every repo of the task
+  mr <id> [--repo name]   push the task branch and open a GitLab MR
   intake <id|url> --type story|task|bug   issue -> JSON
   switch <branch> --repos <list>          переключить основной клон на ветку (без окружения)
+  edit <id> [--summary s] [--description d] [--mode worktree|simple] [--repos list]   правка задачи
   state list|show <id>   registry
   merge <id> [--yes]     merge a task branch into its feature
   finish <id> [--dry-run] [--yes]   shut a task down
@@ -737,6 +906,7 @@ export function runCli(argv: string[], deps: CliDeps): void {
     case "doctor": return cmdDoctor(deps);
     case "intake": return cmdIntake(deps, rest);
     case "switch": return cmdSwitch(deps, rest);
+    case "edit": return cmdEdit(deps, rest);
     case "--version":
     case "-v": {
       const config = readConfig(deps.metaDir);

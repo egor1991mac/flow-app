@@ -18,8 +18,10 @@ import { intakeId, typeKind } from "../../../flow-core/src/intake.ts";
 import {
   issueField,
   issueAttribute,
+  pickCurrentSprint,
   youtrackAdapter,
 } from "../../../flow-core/src/adapters/youtrack.ts";
+import type { YtIssueRow, YtSprintRow, YtUserRow } from "../../../flow-core/src/adapters/youtrack.ts";
 import { gitAdapter } from "../../../flow-core/src/adapters/git.ts";
 import { dockerAdapter } from "../../../flow-core/src/adapters/docker.ts";
 import { hostsAdapter } from "../../../flow-core/src/adapters/hosts.ts";
@@ -148,15 +150,18 @@ export function taskBranches(task: {
   });
 }
 
-export function branchNames(parentId?: string | null): string[] {
+export function branchNames(parentId?: string | null, part?: string | null): string[] {
   const config = readConfig(META);
+  const needle = (part ?? "").trim().toLowerCase();
   const names = new Set<string>();
   for (const repo of Object.keys(config.repos)) {
     const clone = path.join(config.mainRoot, repo);
     if (!fs.existsSync(clone)) continue;
-    for (const ref of gitAdapter.searchRefs(clone, parentId ?? "")) {
+    for (const ref of gitAdapter.searchRefs(clone, needle ? "" : parentId ?? "")) {
       const name = ref.replace(/^origin\//, "");
-      if (name !== "HEAD") names.add(name);
+      if (name === "HEAD") continue;
+      if (needle && !name.toLowerCase().includes(needle)) continue;
+      names.add(name);
     }
   }
   const all = [...names];
@@ -266,6 +271,25 @@ export interface SwitchTaskInput {
   from?: string | null;
 }
 
+export interface EditTaskInput {
+  id: string;
+  title?: string | null;
+  description?: string | null;
+  mode?: string | null;
+  repos?: string | null;
+}
+
+export function editTask(b: EditTaskInput): InvokeResult {
+  const id = b.id.trim();
+  const title = b.title?.trim() ?? "";
+  if (!id) return { ok: false, output: [], error: "укажи ID задачи" };
+  if (!title) return { ok: false, output: [], error: "название не может быть пустым" };
+  const argv = ["edit", id, "--summary", title, "--description", b.description ?? ""];
+  if (b.mode) argv.push("--mode", b.mode);
+  if (b.repos) argv.push("--repos", b.repos);
+  return invoke(argv);
+}
+
 export function switchTask(b: SwitchTaskInput): InvokeResult {
   if (!b.repos) return { ok: false, output: [], error: "выбери репозитории" };
   if (!b.id) return { ok: false, output: [], error: "укажи ID задачи" };
@@ -364,6 +388,162 @@ export function intakePreview(input: string): IntakeResult {
     parentSource,
     branchName: branchName(id, typeKind(issueField(issue, "Type")) ?? "task", summary),
     titleRu: `${id}: ${cleanSummary(summary)}`,
+  };
+}
+
+export interface YtBoardResult {
+  ok: boolean;
+  error: string | null;
+  issues: YtIssueRow[];
+  truncated: boolean;
+}
+
+export interface YtSprintItem extends YtSprintRow {
+  current: boolean;
+}
+
+export interface YtSprintsResult {
+  ok: boolean;
+  error: string | null;
+  boardId: string;
+  current: YtSprintItem | null;
+  sprints: YtSprintItem[];
+}
+
+export function ytBoard(query: string, limit = 300): YtBoardResult {
+  const q = query.trim() || "#Unresolved";
+  const res = youtrackAdapter.issues(q, limit);
+  if (!res.ok) {
+    return { ok: false, error: res.error ?? "YouTrack недоступен", issues: [], truncated: false };
+  }
+  return { ok: true, error: null, issues: res.issues, truncated: res.issues.length >= limit };
+}
+
+export function ytSprints(): YtSprintsResult {
+  const boardId = process.env.FLOW_YT_BOARD ?? "128-12";
+  const res = youtrackAdapter.sprints(boardId);
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: res.error ?? "YouTrack недоступен",
+      boardId,
+      current: null,
+      sprints: [],
+    };
+  }
+  const active = pickCurrentSprint(res.sprints);
+  return {
+    ok: true,
+    error: null,
+    boardId,
+    current: active ? { ...active, current: true } : null,
+    sprints: res.sprints.map((s) => ({ ...s, current: s.id === active?.id })),
+  };
+}
+
+export interface YtUsersResult {
+  ok: boolean;
+  error: string | null;
+  users: YtUserRow[];
+}
+
+export interface YtCreateInput {
+  summary: string;
+  description: string;
+  parentId: string;
+  assignee?: string | null;
+  estimation?: string | null;
+}
+
+export interface YtCreateResult {
+  ok: boolean;
+  error: string | null;
+  id: string | null;
+  url: string | null;
+  warnings: string[];
+}
+
+export function ytUsers(query = "", limit = 100): YtUsersResult {
+  if (!youtrackAdapter.users) {
+    return { ok: false, error: "YouTrack-адаптер не умеет список пользователей", users: [] };
+  }
+  const res = youtrackAdapter.users(query, limit);
+  return { ok: res.ok, error: res.ok ? null : res.error ?? "YouTrack недоступен", users: res.users };
+}
+
+export function ytCreateIssue(input: YtCreateInput): YtCreateResult {
+  const summary = input.summary.trim();
+  const parentId = input.parentId.trim();
+  const empty = (error: string): YtCreateResult => ({
+    ok: false,
+    error,
+    id: null,
+    url: null,
+    warnings: [],
+  });
+  if (!summary) return empty("укажи название");
+  if (!parentId) return empty("выбери стори — подзадача всегда создаётся под стори");
+  if (!youtrackAdapter.createIssue) return empty("YouTrack-адаптер не умеет создавать задачи");
+  const parent = youtrackAdapter.issueView(parentId);
+  const parentType = typeKind(issueField(parent, "Type"));
+  if (parentType !== "story") {
+    return empty(`${parentId}: родитель должен быть Story, а не ${issueField(parent, "Type") || "без типа"}`);
+  }
+  const res = youtrackAdapter.createIssue({
+    project: process.env.FLOW_YT_PROJECT ?? "REALT",
+    summary,
+    description: input.description ?? "",
+    type: "Task",
+    parentId,
+    assignee: input.assignee ?? null,
+    estimation: input.estimation ?? null,
+  });
+  return {
+    ok: res.ok,
+    error: res.ok ? null : res.error ?? "не удалось создать задачу",
+    id: res.id ?? null,
+    url: res.url ?? null,
+    warnings: res.warnings,
+  };
+}
+
+export interface YtGrill {
+  path: string;
+  content: string;
+}
+
+export function ytGrill(slug: string): YtGrill {
+  const safe =
+    slug
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80) || "draft";
+  const dir = path.join(META, "grill");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${safe}.md`);
+  const content = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  return { path: file, content };
+}
+
+export interface GrillLaunch {
+  ok: boolean;
+  error: string | null;
+  path: string;
+}
+
+export function launchGrill(slug: string, prompt: string): GrillLaunch {
+  const grill = ytGrill(slug);
+  if (!orcaAvailable()) {
+    return { ok: false, error: "Orca недоступна — скопируй промпт вручную", path: grill.path };
+  }
+  if (!orcaSpace.launchAgentResult) {
+    return { ok: false, error: "Orca-адаптер не умеет запускать чат", path: grill.path };
+  }
+  const res = orcaSpace.launchAgentResult(HOME, prompt);
+  return {
+    ok: res.ok,
+    error: res.ok ? null : res.error ?? "Orca не открыла чат",
+    path: grill.path,
   };
 }
 

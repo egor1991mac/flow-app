@@ -14,6 +14,7 @@ import {
   MUTATION_START_TASK,
   QUERY_JOB,
   QUERY_TASK_DETAIL,
+  QUERY_TASK_GIT,
 } from "@/lib/graphql/documents";
 import { stageDef, stageSet } from "@/lib/stages";
 
@@ -22,11 +23,14 @@ import type {
   InvokeResult,
   Job,
   JournalData,
+  RepoGitRow,
   StagesFile,
   StartResult,
   Task,
 } from "@/lib/types";
 import type { FC } from "react";
+
+const COMMIT_TYPES = ["feat", "fix", "refactor", "docs", "test", "chore", "perf", "style"];
 
 interface ActiveJob {
   taskId: string;
@@ -40,6 +44,7 @@ interface DetailProps {
   onClosed: (id: string) => void;
   onStart: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onEdit: (id: string) => void;
 }
 
 interface TaskDetailData {
@@ -51,6 +56,16 @@ interface TaskDetailData {
 
 interface JobData {
   job: Job | null;
+}
+
+interface GitData {
+  taskGit: RepoGitRow[];
+}
+
+interface CommitForm {
+  repo: string;
+  type: string;
+  subject: string;
 }
 
 interface StageInput {
@@ -66,16 +81,29 @@ interface ApproveStageInput {
   phrase: string;
 }
 
-export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, onRefresh }) => {
+export const Detail: FC<DetailProps> = ({
+  id,
+  job,
+  onJobEnd,
+  onClosed,
+  onStart,
+  onRefresh,
+  onEdit,
+}) => {
   const [stageNum, setStageNum] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [phrase, setPhrase] = useState("");
   const [log, setLog] = useState("");
+  const [commitForm, setCommitForm] = useState<CommitForm | null>(null);
 
   const activeJobId = job && job.taskId === id ? job.jobId : null;
   const { data, refetch } = useQuery<TaskDetailData>(QUERY_TASK_DETAIL, {
+    variables: { id },
+    fetchPolicy: "cache-and-network",
+  });
+  const { data: gitData, refetch: refetchGit } = useQuery<GitData>(QUERY_TASK_GIT, {
     variables: { id },
     fetchPolicy: "cache-and-network",
   });
@@ -107,11 +135,12 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
   );
   const [commitTask] = useMutation<
     { commitTask: InvokeResult },
-    { id: string; subject?: string | null }
+    { id: string; subject?: string | null; type?: string | null; repo?: string | null }
   >(MUTATION_COMMIT_TASK);
-  const [createTaskMr] = useMutation<{ createTaskMr: InvokeResult }, { id: string }>(
-    MUTATION_CREATE_TASK_MR
-  );
+  const [createTaskMr] = useMutation<
+    { createTaskMr: InvokeResult },
+    { id: string; repo?: string | null }
+  >(MUTATION_CREATE_TASK_MR);
 
   useEffect(() => {
     setStageNum(null);
@@ -119,6 +148,7 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     setBusy(false);
     setPending(null);
     setLog("");
+    setCommitForm(null);
   }, [id]);
 
   useEffect(() => {
@@ -151,6 +181,7 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
         : (res.error ?? "ошибка") + "\n" + (res.err ?? []).join("\n"),
     });
     void refetch();
+    void refetchGit();
   };
 
   if (!data) {
@@ -164,6 +195,7 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
   const stages = data.taskStages;
   const journal = data.taskJournal;
   const branches = data.taskBranches;
+  const gitRows = gitData?.taskGit ?? [];
   const set = stageSet(task);
   const stageList = stages?.stages ?? [];
 
@@ -218,22 +250,38 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     }
   };
 
-  const commitClick = async () => {
-    const subject = prompt("Тема коммита (пусто — взять из названия задачи)");
-    if (subject === null) {
+  const openCommit = (repo: string) => {
+    const title = task.titleRu.replace(/^[A-Z]+-\d+\s*[:\u2014-]\s*/, "");
+    setCommitForm({
+      repo,
+      type: task.type === "bug" ? "fix" : "feat",
+      subject: title.slice(0, 64),
+    });
+  };
+
+  const submitCommit = async () => {
+    if (!commitForm || !commitForm.subject.trim()) {
       return;
     }
-    const r = await commitTask({ variables: { id: task.id, subject: subject.trim() || null } });
+    const r = await commitTask({
+      variables: {
+        id: task.id,
+        repo: commitForm.repo,
+        type: commitForm.type,
+        subject: commitForm.subject.trim(),
+      },
+    });
     if (r.data) {
       show(r.data.commitTask);
+      setCommitForm(null);
     }
   };
 
-  const mrClick = async () => {
-    if (!confirm(`Отправить ветку ${task.branch} и создать MR для ${task.id}?`)) {
+  const createMr = async (repo: string) => {
+    if (!confirm(`Отправить ветку и создать MR для ${repo} (${task.id})?`)) {
       return;
     }
-    const r = await createTaskMr({ variables: { id: task.id } });
+    const r = await createTaskMr({ variables: { id: task.id, repo } });
     if (r.data) {
       show(r.data.createTaskMr);
     }
@@ -281,7 +329,7 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     if (task.status === "closed") {
       return "Задача закрыта: рабочей копии нет";
     }
-    return `Запустить opencode в ${task.workspacePath} с контекстом задачи: AGENTS.md, TASK.md, flow recall и ссылки на ветку задачи и Фичи`;
+    return `Запустить opencode по сессии на каждый репозиторий задачи (${task.repos.join(", ")}): AGENTS.md, TASK.md, flow recall и ссылки на ветки; если чат там уже есть, новый не создаётся`;
   };
 
   const getMergeHint = (): string => {
@@ -338,6 +386,8 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
     ),
   ];
 
+  const gitPending = pending === "коммит" || pending === "MR";
+
   const branchRef = (name: string, url: string | null) =>
     url ? (
       <a className="branch-link" href={url} target="_blank" rel="noreferrer">
@@ -350,26 +400,19 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
   return (
     <>
       <div className="detail-main">
-        <h2>{task.titleRu ?? task.id}</h2>
+        <div className="detail-title">
+          <h2>{task.titleRu ?? task.id}</h2>
+          <button
+            className="mini"
+            title={`Редактировать ${task.id}: название и описание`}
+            onClick={() => onEdit(task.id)}
+          >
+            ✎ редактировать
+          </button>
+        </div>
         <div className="meta">
           <span className={`pill ${task.status}`}>{task.status}</span> · {task.type}
           {task.parentId ? <> · Фича {task.parentId}</> : null}
-        </div>
-        <div className="meta">
-          ветка{" "}
-          {uniqueBranches.map((r, i) => (
-            <span key={r.repo}>
-              {i > 0 ? " · " : ""}
-              {uniqueBranches.length > 1 ? `${r.repo}: ` : ""}
-              {branchRef(r.branch, r.url)}
-              {r.base ? (
-                <>
-                  {" от "}
-                  {branchRef(r.base, r.baseUrl)}
-                </>
-              ) : null}
-            </span>
-          ))}
         </div>
         <div className="meta">{task.workspacePath}</div>
 
@@ -386,8 +429,8 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
             <div className="group-title">{task.type === "story" ? "Фича" : "Задача"}</div>
             <div className="group-hint">
               Старт поднимает окружение: слот, порты, env/compose, контейнеры (при создании ничего
-              не запускается). Коммит и MR работают по репозиториям задачи, merge вливает ветку в
-              Фичу, finish гасит стек и удаляет копии.
+              не запускается). merge вливает ветку в Фичу, finish гасит стек и удаляет копии.
+              Коммиты и MR — в блоке справа.
             </div>
             <div className="action-row">
               <button
@@ -404,20 +447,6 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
                 onClick={() => void run("запуск агента", agentClick)}
               >
                 Запустить агента
-              </button>
-              <button
-                disabled={pending !== null || task.status === "closed"}
-                title="Закоммитить изменения во всех репозиториях задачи (git-cz, если настроен)"
-                onClick={() => void run("коммит", commitClick)}
-              >
-                Коммит
-              </button>
-              <button
-                disabled={pending !== null || task.status === "closed"}
-                title={`Push ветки и MR: ${task.parentId ? `в Фичу ${task.parentId}` : "в stage"}`}
-                onClick={() => void run("MR", mrClick)}
-              >
-                MR
               </button>
               <button
                 disabled={
@@ -440,7 +469,7 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
                 finish: закрыть
               </button>
             </div>
-            {pending ? (
+            {pending && !gitPending ? (
               <div className="run-status">
                 <span className="spinner" /> {pending}…
               </div>
@@ -530,6 +559,138 @@ export const Detail: FC<DetailProps> = ({ id, job, onJobEnd, onClosed, onStart, 
       </div>
 
       <div className="detail-side">
+        <h3>Коммиты</h3>
+        <div className="action-group">
+          {gitData ? null : <p className="hint">загружаю…</p>}
+          {gitRows.map((row) => (
+            <div className="git-repo" key={row.repo}>
+              <div className="git-repo-head">
+                <span className="git-repo-name">{row.repo}</span>
+                <button
+                  className="mini"
+                  disabled={pending !== null || task.status === "closed"}
+                  title={`Добавить коммит в ${row.repo}`}
+                  onClick={() => openCommit(row.repo)}
+                >
+                  + коммит
+                </button>
+              </div>
+              {commitForm?.repo === row.repo ? (
+                <div className="commit-form">
+                  <div className="action-row">
+                    <select
+                      value={commitForm.type}
+                      aria-label="тип коммита"
+                      onChange={(e) => setCommitForm({ ...commitForm, type: e.target.value })}
+                    >
+                      {COMMIT_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={commitForm.subject}
+                      placeholder="тема коммита"
+                      aria-label="тема коммита"
+                      onChange={(e) => setCommitForm({ ...commitForm, subject: e.target.value })}
+                    />
+                  </div>
+                  <div className="action-row">
+                    <button
+                      className="primary"
+                      disabled={pending !== null || !commitForm.subject.trim()}
+                      onClick={() => void run("коммит", submitCommit)}
+                    >
+                      закоммитить
+                    </button>
+                    <button className="ghost" onClick={() => setCommitForm(null)}>
+                      отмена
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {row.commits.length ? (
+                <ul className="commit-list">
+                  {row.commits.map((c) => (
+                    <li key={c.hash} title={`${c.author}, ${c.date}`}>
+                      <code>{c.hash}</code> {c.subject}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">
+                  {row.base ? `нет коммитов от ${row.base}` : "коммитов нет"}
+                </p>
+              )}
+            </div>
+          ))}
+          {gitPending ? (
+            <div className="run-status">
+              <span className="spinner" /> {pending}…
+            </div>
+          ) : null}
+        </div>
+
+        <h3>MR</h3>
+        <div className="action-group">
+          {gitRows.map((row) => (
+            <div className="git-repo" key={row.repo}>
+              <div className="git-repo-head">
+                <span className="git-repo-name">{row.repo}</span>
+                <button
+                  className="mini"
+                  disabled={pending !== null || task.status === "closed"}
+                  title={`Push ветки и MR для ${row.repo}`}
+                  onClick={() => void run("MR", () => createMr(row.repo))}
+                >
+                  + MR
+                </button>
+              </div>
+              {row.mrs.length ? (
+                <ul className="commit-list">
+                  {row.mrs.map((mr) => (
+                    <li key={mr.iid}>
+                      {mr.url ? (
+                        <a className="git-link" href={mr.url} target="_blank" rel="noreferrer">
+                          !{mr.iid} {mr.title}
+                        </a>
+                      ) : (
+                        <span>
+                          !{mr.iid} {mr.title}
+                        </span>
+                      )}
+                      <span className="mr-state">
+                        {mr.state} → {mr.targetBranch}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">MR нет</p>
+              )}
+            </div>
+          ))}
+          {uniqueBranches.length ? (
+            <div className="meta">
+              ветка{" "}
+              {uniqueBranches.map((r, i) => (
+                <span key={r.repo}>
+                  {i > 0 ? " · " : ""}
+                  {uniqueBranches.length > 1 ? `${r.repo}: ` : ""}
+                  {branchRef(r.branch, r.url)}
+                  {r.base ? (
+                    <>
+                      {" от "}
+                      {branchRef(r.base, r.baseUrl)}
+                    </>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
         <h3>Логи</h3>
         <div className="log">{log || stageLines.join("\n")}</div>
 

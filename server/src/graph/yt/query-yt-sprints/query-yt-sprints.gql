@@ -1,0 +1,19 @@
+extend type Query {
+  ytSprints: YtSprints!
+}
+
+type YtSprint {
+  id: String!
+  name: String!
+  start: Float
+  finish: Float
+  current: Boolean!
+}
+
+type YtSprints {
+  ok: Boolean!
+  error: String
+  boardId: String!
+  current: YtSprint
+  sprints: [YtSprint!]!
+}

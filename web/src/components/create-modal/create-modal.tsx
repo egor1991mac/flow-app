@@ -3,8 +3,10 @@
 import { useApolloClient, useLazyQuery, useMutation, useQuery } from "@apollo/client";
 import { useEffect, useRef, useState } from "react";
 
+import { GrillEditor, grillTitle } from "@/components/grill-editor/grill-editor";
 import {
   MUTATION_CREATE_TASK,
+  MUTATION_EDIT_TASK,
   MUTATION_SWITCH_TASK,
   QUERY_BRANCH_NAMES,
   QUERY_CONFIG,
@@ -17,6 +19,8 @@ import type { FC } from "react";
 
 interface CreateModalProps {
   open: boolean;
+  initialId?: string | null;
+  editId?: string | null;
   onClose: () => void;
   onCreated: (id: string) => Promise<void>;
 }
@@ -42,31 +46,58 @@ interface SwitchTaskInput {
   from?: string | null;
 }
 
-export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) => {
+interface EditTaskInput {
+  id: string;
+  title: string;
+  description: string;
+  mode: string;
+  repos: string;
+}
+
+export const CreateModal: FC<CreateModalProps> = ({
+  open,
+  initialId,
+  editId,
+  onClose,
+  onCreated,
+}) => {
+  const isEdit = !!editId;
   const ref = useRef<HTMLDialogElement | null>(null);
   const client = useApolloClient();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [mode, setMode] = useState<"worktree" | "switch">("worktree");
+  const [mode, setMode] = useState<"" | "worktree" | "switch" | "simple">("");
   const [link, setLink] = useState("");
   const [id, setId] = useState("");
   const [type, setType] = useState("task");
   const [summary, setSummary] = useState("");
   const [desc, setDesc] = useState("");
   const [parentId, setParentId] = useState("");
-  const [base, setBase] = useState("");
+  const [base, setBase] = useState("stage");
+  const [baseOpen, setBaseOpen] = useState(false);
+  const [baseQuery, setBaseQuery] = useState("");
+  const [slug, setSlug] = useState("");
   const [loading, setLoading] = useState(false);
   const [locked, setLocked] = useState(false);
   const [msg, setMsg] = useState("");
 
   const { data: configData } = useQuery<{ config: AppConfig }>(QUERY_CONFIG, { skip: !open });
+  const { data: editData } = useQuery<{ task: Task | null }>(QUERY_TASK, {
+    skip: !open || !editId,
+    variables: { id: editId ?? "" },
+  });
   const parentForBase = /^[A-Z]+-\d+$/i.test(parentId.trim()) ? parentId.trim() : null;
-  const { data: branchesData } = useQuery<{ branchNames: string[] }, { parentId: string | null }>(
-    QUERY_BRANCH_NAMES,
-    {
-      skip: !open,
-      variables: { parentId: parentForBase },
-    }
-  );
+  useEffect(() => {
+    const timer = setTimeout(() => setBaseQuery(base), 300);
+    return () => clearTimeout(timer);
+  }, [base]);
+  const baseNeedle = baseQuery.trim().length >= 3 ? baseQuery.trim() : "";
+  const { data: branchesData } = useQuery<
+    { branchNames: string[] },
+    { parentId: string | null; part: string }
+  >(QUERY_BRANCH_NAMES, {
+    skip: !open || !baseNeedle,
+    variables: { parentId: parentForBase, part: baseNeedle },
+  });
   const [loadIntake] = useLazyQuery<{ intake: IntakeResponse }, { input: string }>(QUERY_INTAKE, {
     fetchPolicy: "network-only",
   });
@@ -76,19 +107,54 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
   const [switchMutation] = useMutation<{ switchTask: InvokeResult }, { input: SwitchTaskInput }>(
     MUTATION_SWITCH_TASK
   );
+  const [editMutation] = useMutation<{ editTask: InvokeResult }, { input: EditTaskInput }>(
+    MUTATION_EDIT_TASK
+  );
 
   const config = configData?.config ?? null;
-  const branches = branchesData?.branchNames ?? [];
+  const baseOptions = baseNeedle && baseOpen ? (branchesData?.branchNames ?? []).slice(0, 60) : [];
+  const grillContext = id.trim()
+    ? {
+        id: id.trim(),
+        url: /^https?:\/\//.test(link.trim()) ? link.trim() : null,
+        summary: summary.trim() || null,
+      }
+    : null;
 
   useEffect(() => {
     if (!open) {
       return;
     }
     ref.current?.showModal();
+    setSlug(`grill-${Date.now().toString(36)}`);
   }, [open]);
 
   useEffect(() => {
-    if (!config || Object.keys(checked).length > 0) {
+    if (!open || !editId) {
+      return;
+    }
+    setId(editId);
+    setLink(editId);
+    setMsg("");
+  }, [open, editId]);
+
+  useEffect(() => {
+    const task = editData?.task;
+    if (!open || !editId || !task) {
+      return;
+    }
+    const prefix = `${task.id}: `;
+    setId(task.id);
+    setType(task.type);
+    setSummary(task.titleRu.startsWith(prefix) ? task.titleRu.slice(prefix.length) : task.titleRu);
+    setDesc(task.description ?? "");
+    setParentId(task.parentId ?? "");
+    setMode(task.mode ?? "worktree");
+    setChecked(Object.fromEntries(task.repos.map((repo) => [repo, true])));
+  }, [open, editId, editData]);
+
+  useEffect(() => {
+    if (isEdit || !config || Object.keys(checked).length > 0) {
       return;
     }
     const first = config.repos.www ? "www" : Object.keys(config.repos)[0];
@@ -97,6 +163,10 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
 
   const close = () => {
     ref.current?.close();
+    if (!isEdit) {
+      setChecked({});
+      setMode("");
+    }
     onClose();
   };
 
@@ -135,8 +205,8 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
     } catch {}
   };
 
-  const loadFromYouTrack = async () => {
-    if (!link.trim()) {
+  const loadFromYouTrack = async (input = link) => {
+    if (!input.trim()) {
       setMsg("вставь ссылку на задачу YouTrack");
       return;
     }
@@ -144,7 +214,7 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
     setLocked(true);
     setMsg("читаю задачу…");
     try {
-      const r = (await loadIntake({ variables: { input: link.trim() } })).data?.intake;
+      const r = (await loadIntake({ variables: { input: input.trim() } })).data?.intake;
       if (!r || !r.ok) {
         setMsg("ошибка: " + (r?.error ?? "не удалось прочитать задачу"));
         return;
@@ -168,11 +238,62 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
     }
   };
 
+  useEffect(() => {
+    if (!open || !initialId) {
+      return;
+    }
+    setLink(initialId);
+    void loadFromYouTrack(initialId);
+  }, [open, initialId]);
+
+  const save = async () => {
+    if (!editId) {
+      return;
+    }
+    const repos = Object.entries(checked)
+      .filter(([, on]) => on)
+      .map(([r]) => r)
+      .join(",");
+    if (!summary.trim()) {
+      setMsg("укажи название");
+      return;
+    }
+    if (!mode) {
+      setMsg("выбери режим");
+      return;
+    }
+    if (!repos) {
+      setMsg("выбери хотя бы один репозиторий");
+      return;
+    }
+    setMsg("сохраняю…");
+    const res = await editMutation({
+      variables: {
+        input: { id: editId, title: summary.trim(), description: desc, mode, repos },
+      },
+    });
+    const result = res.data?.editTask;
+    if (result?.ok) {
+      await onCreated(editId);
+      close();
+    } else {
+      setMsg("ошибка: " + (result?.error ?? ""));
+    }
+  };
+
   const create = async () => {
     const repos = Object.entries(checked)
       .filter(([, on]) => on)
       .map(([r]) => r)
       .join(",");
+    if (!mode) {
+      setMsg("выбери режим");
+      return;
+    }
+    if (!base.trim()) {
+      setMsg("укажи основу");
+      return;
+    }
     if (!repos) {
       setMsg("выбери хотя бы один репозиторий");
       return;
@@ -241,43 +362,53 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
       }}
     >
       <div className="modal-head">
-        <h2>Новая задача</h2>
+        <h2>{isEdit ? "Редактировать задачу" : "Новая задача"}</h2>
         <button className="ghost" onClick={close}>
           ✕
         </button>
       </div>
       <div className="modal-grid">
-        <label className="wide">
-          <span className="form-title">Ссылка на YouTrack</span>
-          <span className="inline-row">
-            <input
-              value={link}
-              placeholder="https://youtrack.realt.by/issue/REALT-…"
-              disabled={locked}
-              onChange={(e) => setLink(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void loadFromYouTrack();
-                }
-              }}
-            />
-            <button
-              className={loading ? "loading" : ""}
-              disabled={loading}
-              onClick={() => void loadFromYouTrack()}
-            >
-              Загрузить
-            </button>
-          </span>
-        </label>
+        {isEdit ? null : (
+          <label className="wide">
+            <span className="form-title">Ссылка на YouTrack</span>
+            <span className="inline-row">
+              <input
+                value={link}
+                placeholder="https://youtrack.realt.by/issue/REALT-…"
+                disabled={locked}
+                onChange={(e) => setLink(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void loadFromYouTrack();
+                  }
+                }}
+              />
+              <button
+                className={loading ? "loading" : ""}
+                disabled={loading}
+                onClick={() => void loadFromYouTrack()}
+              >
+                Загрузить
+              </button>
+            </span>
+          </label>
+        )}
         <label>
           <span className="form-title">ID</span>
-          <input value={id} disabled={locked} onChange={(e) => setId(e.target.value)} />
+          <input
+            value={id}
+            disabled={locked || isEdit}
+            onChange={(e) => setId(e.target.value)}
+          />
         </label>
         <label>
           <span className="form-title">Тип</span>
-          <select value={type} disabled={locked} onChange={(e) => setType(e.target.value)}>
+          <select
+            value={type}
+            disabled={locked || isEdit}
+            onChange={(e) => setType(e.target.value)}
+          >
             <option value="task">task</option>
             <option value="bug">bug</option>
             <option value="story">story</option>
@@ -289,13 +420,25 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
         </label>
         <label className="wide">
           <span className="form-title">Описание</span>
-          <textarea value={desc} disabled={locked} onChange={(e) => setDesc(e.target.value)} />
+          <GrillEditor
+            open={open}
+            slug={slug}
+            context={grillContext}
+            value={desc}
+            disabled={locked}
+            autoWatch={!isEdit}
+            onChange={setDesc}
+            onResult={(markdown) => {
+              setDesc(markdown);
+              setSummary((prev) => prev || grillTitle(markdown));
+            }}
+          />
         </label>
         <label>
           <span className="form-title">Фича (parentId)</span>
           <input
             value={parentId}
-            disabled={locked}
+            disabled={locked || isEdit}
             onChange={(e) => {
               setParentId(e.target.value);
               void defaultBaseFromParent(e.target.value.trim());
@@ -308,7 +451,7 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
             value={mode}
             disabled={locked}
             onChange={(e) => {
-              const m = e.target.value as "worktree" | "switch";
+              const m = e.target.value as "" | "worktree" | "switch" | "simple";
               setMode(m);
               setMsg(
                 m === "switch"
@@ -317,28 +460,55 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
               );
             }}
           >
+            {isEdit ? null : (
+              <option value="" disabled>
+                не выбран
+              </option>
+            )}
             <option value="worktree">worktree: копии + Docker по кнопке</option>
-            <option value="switch">просто ветка в основном клоне</option>
+            <option value={isEdit ? "simple" : "switch"}>
+              просто ветка в основном клоне
+            </option>
           </select>
         </label>
-        <label className="wide">
-          <span className="form-title">Основа: от какой ветки отвести</span>
-          <input
-            list="nf-branches"
-            value={base}
-            disabled={locked}
-            onChange={(e) => setBase(e.target.value)}
-          />
-          <datalist id="nf-branches">
-            {branches.map((b) => (
-              <option key={b} value={b} />
-            ))}
-          </datalist>
-          <span className="field-note">
-            пусто → ветка Фичи, иначе stage; если основы нет в репозитории — фолбэк на stage с
-            предупреждением
-          </span>
-        </label>
+        {isEdit ? null : (
+          <label className="wide">
+            <span className="form-title">Основа: от какой ветки отвести</span>
+            <span className="combo">
+              <input
+                value={base}
+                disabled={locked}
+                onChange={(e) => {
+                  setBase(e.target.value);
+                  setBaseOpen(true);
+                }}
+                onFocus={() => setBaseOpen(true)}
+                onBlur={() => setBaseOpen(false)}
+              />
+              {baseOptions.length > 0 ? (
+                <span className="combo-list">
+                  {baseOptions.map((b) => (
+                    <button
+                      key={b}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setBase(b);
+                        setBaseOpen(false);
+                      }}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+            </span>
+            <span className="field-note">
+              по умолчанию stage; из parentId подставляется ветка Фичи; подсказки — от 3 введённых
+              символов; если основы нет в репозитории — фолбэк на stage с предупреждением
+            </span>
+          </label>
+        )}
         <label className="wide">
           <span className="form-title">Репозитории</span>
           <span className="repo-list">
@@ -355,17 +525,23 @@ export const CreateModal: FC<CreateModalProps> = ({ open, onClose, onCreated }) 
             ))}
           </span>
           <span className="field-note">
-            {mode === "worktree"
-              ? "пары ui→api подхватываются автоматически"
-              : "пары не добавляются: только отмеченные"}
+            {isEdit
+              ? "тип и Фича не меняются; новые репозитории получат worktree, снятые — потеряют копию, стек будет остановлен, Старт пересоберёт env/compose"
+              : mode === "worktree"
+                ? "пары ui→api подхватываются автоматически"
+                : "пары не добавляются: только отмеченные"}
           </span>
         </label>
       </div>
       <div className="modal-actions">
         <span className="sub">{msg}</span>
         <button onClick={close}>Отмена</button>
-        <button className="primary" disabled={locked} onClick={() => void create()}>
-          Создать
+        <button
+          className="primary"
+          disabled={locked}
+          onClick={() => void (isEdit ? save() : create())}
+        >
+          {isEdit ? "Сохранить" : "Создать"}
         </button>
       </div>
     </dialog>

@@ -16,6 +16,31 @@ export interface BranchRow {
   baseUrl: string | null;
 }
 
+export interface CommitRow {
+  hash: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+export interface MrRow {
+  iid: string;
+  title: string;
+  state: string;
+  url: string | null;
+  sourceBranch: string;
+  targetBranch: string;
+}
+
+export interface RepoGitRow {
+  repo: string;
+  branch: string;
+  base: string | null;
+  dir: string | null;
+  commits: CommitRow[];
+  mrs: MrRow[];
+}
+
 export interface DecisionRow {
   id: string;
   ts: string;
@@ -93,4 +118,78 @@ export interface Job {
   log: string;
   done: boolean;
   code: number | null;
+}
+
+export interface YtIssue {
+  id: string;
+  summary: string;
+  state: string;
+  assignee: string | null;
+  assigneeLogin: string | null;
+  priority: string | null;
+  type: string | null;
+  project: string | null;
+  updated: number;
+  url: string;
+}
+
+export interface YtSprint {
+  id: string;
+  name: string;
+  start: number | null;
+  finish: number | null;
+  current: boolean;
+}
+
+export interface YtBoardData {
+  ytBoard: {
+    ok: boolean;
+    error: string | null;
+    truncated: boolean;
+    issues: YtIssue[];
+  };
+}
+
+export interface YtSprintsData {
+  ytSprints: {
+    ok: boolean;
+    error: string | null;
+    boardId: string;
+    current: YtSprint | null;
+    sprints: YtSprint[];
+  };
+}
+
+export interface YtUser {
+  login: string;
+  name: string;
+}
+
+export interface YtUsersData {
+  ytUsers: {
+    ok: boolean;
+    error: string | null;
+    users: YtUser[];
+  };
+}
+
+export interface YtGrillData {
+  ytGrill: {
+    path: string;
+    content: string;
+  };
+}
+
+export interface YtCreated {
+  ok: boolean;
+  error: string | null;
+  id: string | null;
+  url: string | null;
+  warnings: string[];
+}
+
+export interface GrillLaunch {
+  ok: boolean;
+  error: string | null;
+  path: string;
 }

@@ -4,8 +4,8 @@ export const mutationTaskCommitResolver = {
   Mutation: {
     commitTask: (
       _parent: unknown,
-      { id, subject }: { id: string; subject?: string | null },
+      { id, subject, type, repo }: { id: string; subject?: string | null; type?: string | null; repo?: string | null },
       ctx: GQLContext
-    ) => ctx.dataSources.flowApi.commitTask(id, subject),
+    ) => ctx.dataSources.flowApi.commitTask(id, subject, type, repo),
   },
 };

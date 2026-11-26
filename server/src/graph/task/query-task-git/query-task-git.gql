@@ -1,0 +1,3 @@
+extend type Query {
+  taskGit(taskId: String!): [RepoGit!]!
+}

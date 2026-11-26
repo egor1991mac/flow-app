@@ -1,0 +1,9 @@
+extend type Mutation {
+  launchGrill(slug: String!, prompt: String!): GrillLaunch!
+}
+
+type GrillLaunch {
+  ok: Boolean!
+  error: String
+  path: String!
+}

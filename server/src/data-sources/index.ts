@@ -2,6 +2,7 @@ import {
   HOME,
   META,
   createTask,
+  editTask,
   getJob,
   intakePreview,
   invoke,
@@ -9,6 +10,12 @@ import {
   switchTask,
   branchNames,
   taskBranches,
+  ytBoard,
+  ytSprints,
+  ytUsers,
+  ytCreateIssue,
+  ytGrill,
+  launchGrill,
   readConfig,
   readRegistry,
   readStages,
@@ -20,12 +27,22 @@ import type {
   BranchRow,
   CreateTaskInput,
   CreateTaskResult,
+  EditTaskInput,
   IntakeResult,
   InvokeResult,
   Job,
   SwitchTaskInput,
+  YtBoardResult,
+  YtSprintsResult,
+  YtUsersResult,
+  YtCreateInput,
+  YtCreateResult,
+  YtGrill,
+  GrillLaunch,
 } from "./flow-api.ts";
 import { indexedCount, searchMemory } from "./vector-api.ts";
+import { taskGit } from "./task-git.ts";
+import type { RepoGitRow } from "./task-git.ts";
 import type { SearchHit } from "./vector-api.ts";
 
 export interface FlowApi {
@@ -36,13 +53,21 @@ export interface FlowApi {
   getTaskStages(taskId: string): unknown;
   getTaskJournal(taskId: string): { journal: unknown[]; decisions: unknown[] };
   getTaskBranches(taskId: string): BranchRow[] | null;
+  getTaskGit(taskId: string): RepoGitRow[];
   getGlobalStages(): unknown;
   getConfig(): unknown;
-  getBranchNames(parentId?: string | null): string[];
+  getBranchNames(parentId?: string | null, part?: string | null): string[];
   getJob(id: string): Job | null;
   search(q: string): { ok: boolean; indexed: number; results: SearchHit[] };
   intake(input: string): IntakeResult;
+  ytBoard(query: string, limit?: number): YtBoardResult;
+  ytSprints(): YtSprintsResult;
+  ytUsers(query?: string, limit?: number): YtUsersResult;
+  ytCreateIssue(input: YtCreateInput): YtCreateResult;
+  ytGrill(slug: string): YtGrill;
+  launchGrill(slug: string, prompt: string): GrillLaunch;
   createTask(input: CreateTaskInput): CreateTaskResult;
+  editTask(input: EditTaskInput): InvokeResult;
   switchTask(input: SwitchTaskInput): InvokeResult;
   startTask(id: string, start: boolean): InvokeResult & { jobId?: string };
   setStage(id: string, n: number, status: string, report?: string | null): InvokeResult;
@@ -50,8 +75,8 @@ export interface FlowApi {
   mergeTask(id: string, yes: boolean): InvokeResult;
   finishTask(id: string, yes: boolean, dryRun: boolean): InvokeResult;
   launchAgent(id: string): InvokeResult;
-  commitTask(id: string, subject?: string | null): InvokeResult;
-  createTaskMr(id: string): InvokeResult;
+  commitTask(id: string, subject?: string | null, type?: string | null, repo?: string | null): InvokeResult;
+  createTaskMr(id: string, repo?: string | null): InvokeResult;
 }
 
 export const getDataSources = (): FlowApi => ({
@@ -85,6 +110,10 @@ export const getDataSources = (): FlowApi => ({
     return task ? taskBranches(task) : null;
   },
 
+  getTaskGit(taskId) {
+    return taskGit(taskId);
+  },
+
   getGlobalStages() {
     return readStages(globalStagesPath(META)) ?? null;
   },
@@ -93,8 +122,8 @@ export const getDataSources = (): FlowApi => ({
     return readConfig(META);
   },
 
-  getBranchNames(parentId?) {
-    return branchNames(parentId);
+  getBranchNames(parentId?: string | null, part?: string | null) {
+    return branchNames(parentId, part);
   },
 
   getJob(id) {
@@ -109,8 +138,36 @@ export const getDataSources = (): FlowApi => ({
     return intakePreview(input);
   },
 
+  ytBoard(query, limit = 300) {
+    return ytBoard(query, limit);
+  },
+
+  ytSprints() {
+    return ytSprints();
+  },
+
+  ytUsers(query = "", limit = 100) {
+    return ytUsers(query, limit);
+  },
+
+  ytCreateIssue(input) {
+    return ytCreateIssue(input);
+  },
+
+  ytGrill(slug) {
+    return ytGrill(slug);
+  },
+
+  launchGrill(slug, prompt) {
+    return launchGrill(slug, prompt);
+  },
+
   createTask(input) {
     return createTask(input);
+  },
+
+  editTask(input) {
+    return editTask(input);
   },
 
   switchTask(input) {
@@ -144,11 +201,17 @@ export const getDataSources = (): FlowApi => ({
     return invoke(["agent", id]);
   },
 
-  commitTask(id, subject) {
-    return invoke(["commit", id, ...(subject ? ["--subject", subject] : [])]);
+  commitTask(id, subject, type, repo) {
+    return invoke([
+      "commit",
+      id,
+      ...(subject ? ["--subject", subject] : []),
+      ...(type ? ["--type", type] : []),
+      ...(repo ? ["--repo", repo] : []),
+    ]);
   },
 
-  createTaskMr(id) {
-    return invoke(["mr", id]);
+  createTaskMr(id, repo) {
+    return invoke(["mr", id, ...(repo ? ["--repo", repo] : [])]);
   },
 });

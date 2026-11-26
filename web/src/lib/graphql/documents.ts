@@ -161,8 +161,8 @@ export const QUERY_CONFIG = gql`
 `;
 
 export const QUERY_BRANCH_NAMES = gql`
-  query BranchNames($parentId: String) {
-    branchNames(parentId: $parentId)
+  query BranchNames($parentId: String, $part: String) {
+    branchNames(parentId: $parentId, part: $part)
   }
 `;
 
@@ -221,6 +221,15 @@ export const MUTATION_SWITCH_TASK = gql`
   }
 `;
 
+export const MUTATION_EDIT_TASK = gql`
+  ${INVOKE_FIELDS}
+  mutation EditTask($input: EditTaskInput!) {
+    editTask(input: $input) {
+      ...InvokeFields
+    }
+  }
+`;
+
 export const MUTATION_START_TASK = gql`
   ${INVOKE_FIELDS}
   mutation StartTask($id: String!, $start: Boolean) {
@@ -249,6 +258,31 @@ export const MUTATION_FINISH_TASK = gql`
   }
 `;
 
+export const QUERY_TASK_GIT = gql`
+  query TaskGit($id: String!) {
+    taskGit(taskId: $id) {
+      repo
+      branch
+      base
+      dir
+      commits {
+        hash
+        subject
+        author
+        date
+      }
+      mrs {
+        iid
+        title
+        state
+        url
+        sourceBranch
+        targetBranch
+      }
+    }
+  }
+`;
+
 export const MUTATION_LAUNCH_AGENT = gql`
   ${INVOKE_FIELDS}
   mutation LaunchAgent($id: String!) {
@@ -260,8 +294,8 @@ export const MUTATION_LAUNCH_AGENT = gql`
 
 export const MUTATION_COMMIT_TASK = gql`
   ${INVOKE_FIELDS}
-  mutation CommitTask($id: String!, $subject: String) {
-    commitTask(id: $id, subject: $subject) {
+  mutation CommitTask($id: String!, $subject: String, $type: String, $repo: String) {
+    commitTask(id: $id, subject: $subject, type: $type, repo: $repo) {
       ...InvokeFields
     }
   }
@@ -269,8 +303,8 @@ export const MUTATION_COMMIT_TASK = gql`
 
 export const MUTATION_CREATE_TASK_MR = gql`
   ${INVOKE_FIELDS}
-  mutation CreateTaskMr($id: String!) {
-    createTaskMr(id: $id) {
+  mutation CreateTaskMr($id: String!, $repo: String) {
+    createTaskMr(id: $id, repo: $repo) {
       ...InvokeFields
     }
   }
@@ -290,6 +324,96 @@ export const MUTATION_APPROVE_STAGE = gql`
   mutation ApproveStage($input: ApproveStageInput!) {
     approveStage(input: $input) {
       ...InvokeFields
+    }
+  }
+`;
+
+export const QUERY_YT_BOARD = gql`
+  query YtBoard($query: String!, $limit: Int) {
+    ytBoard(query: $query, limit: $limit) {
+      ok
+      error
+      truncated
+      issues {
+        id
+        summary
+        state
+        assignee
+        assigneeLogin
+        priority
+        type
+        project
+        updated
+        url
+      }
+    }
+  }
+`;
+
+export const QUERY_YT_SPRINTS = gql`
+  query YtSprints {
+    ytSprints {
+      ok
+      error
+      boardId
+      current {
+        id
+        name
+        start
+        finish
+        current
+      }
+      sprints {
+        id
+        name
+        start
+        finish
+        current
+      }
+    }
+  }
+`;
+
+export const QUERY_YT_USERS = gql`
+  query YtUsers($query: String, $limit: Int) {
+    ytUsers(query: $query, limit: $limit) {
+      ok
+      error
+      users {
+        login
+        name
+      }
+    }
+  }
+`;
+
+export const QUERY_YT_GRILL = gql`
+  query YtGrill($slug: String!) {
+    ytGrill(slug: $slug) {
+      path
+      content
+    }
+  }
+`;
+
+export const MUTATION_YT_CREATE_ISSUE = gql`
+  mutation YtCreateIssue($input: YtCreateIssueInput!) {
+    ytCreateIssue(input: $input) {
+      ok
+      error
+      id
+      url
+      warnings
+    }
+  }
+`;
+
+export const MUTATION_LAUNCH_GRILL = gql`
+  mutation LaunchGrill($slug: String!, $prompt: String!) {
+    launchGrill(slug: $slug, prompt: $prompt) {
+      ok
+      error
+      path
     }
   }
 `;

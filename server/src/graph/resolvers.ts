@@ -4,7 +4,9 @@ import { queryTaskResolver } from "./task/query-task/query-task.resolver.ts";
 import { queryTaskStagesResolver } from "./task/query-task-stages/query-task-stages.resolver.ts";
 import { queryTaskJournalResolver } from "./task/query-task-journal/query-task-journal.resolver.ts";
 import { queryTaskBranchesResolver } from "./task/query-task-branches/query-task-branches.resolver.ts";
+import { queryTaskGitResolver } from "./task/query-task-git/query-task-git.resolver.ts";
 import { mutationTaskCreateResolver } from "./task/mutation-task-create/mutation-task-create.resolver.ts";
+import { mutationTaskEditResolver } from "./task/mutation-task-edit/mutation-task-edit.resolver.ts";
 import { mutationTaskSwitchResolver } from "./task/mutation-task-switch/mutation-task-switch.resolver.ts";
 import { mutationTaskStartResolver } from "./task/mutation-task-start/mutation-task-start.resolver.ts";
 import { mutationTaskMergeResolver } from "./task/mutation-task-merge/mutation-task-merge.resolver.ts";
@@ -21,6 +23,12 @@ import { queryIntakeResolver } from "./intake/query-intake/query-intake.resolver
 import { queryJobResolver } from "./job/query-job/query-job.resolver.ts";
 import { querySearchResolver } from "./search/query-search/query-search.resolver.ts";
 import { queryHealthResolver } from "./health/query-health/query-health.resolver.ts";
+import { queryYtBoardResolver } from "./yt/query-yt-board/query-yt-board.resolver.ts";
+import { queryYtSprintsResolver } from "./yt/query-yt-sprints/query-yt-sprints.resolver.ts";
+import { queryYtUsersResolver } from "./yt/query-yt-users/query-yt-users.resolver.ts";
+import { queryYtGrillResolver } from "./yt/query-yt-grill/query-yt-grill.resolver.ts";
+import { mutationYtCreateIssueResolver } from "./yt/mutation-yt-create-issue/mutation-yt-create-issue.resolver.ts";
+import { mutationYtLaunchGrillResolver } from "./yt/mutation-yt-launch-grill/mutation-yt-launch-grill.resolver.ts";
 
 const operations: Array<{ Query?: Record<string, unknown>; Mutation?: Record<string, unknown> }> = [
   queryTasksResolver,
@@ -28,7 +36,9 @@ const operations: Array<{ Query?: Record<string, unknown>; Mutation?: Record<str
   queryTaskStagesResolver,
   queryTaskJournalResolver,
   queryTaskBranchesResolver,
+  queryTaskGitResolver,
   mutationTaskCreateResolver,
+  mutationTaskEditResolver,
   mutationTaskSwitchResolver,
   mutationTaskStartResolver,
   mutationTaskMergeResolver,
@@ -45,6 +55,12 @@ const operations: Array<{ Query?: Record<string, unknown>; Mutation?: Record<str
   queryJobResolver,
   querySearchResolver,
   queryHealthResolver,
+  queryYtBoardResolver,
+  queryYtSprintsResolver,
+  queryYtUsersResolver,
+  queryYtGrillResolver,
+  mutationYtCreateIssueResolver,
+  mutationYtLaunchGrillResolver,
 ];
 
 const pick = (key: "Query" | "Mutation") =>

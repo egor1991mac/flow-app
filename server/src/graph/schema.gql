@@ -99,6 +99,31 @@ type Branch {
   baseUrl: String
 }
 
+type CommitRow {
+  hash: String!
+  subject: String!
+  author: String!
+  date: String!
+}
+
+type MrRow {
+  iid: String!
+  title: String!
+  state: String!
+  url: String
+  sourceBranch: String!
+  targetBranch: String!
+}
+
+type RepoGit {
+  repo: String!
+  branch: String!
+  base: String
+  dir: String
+  commits: [CommitRow!]!
+  mrs: [MrRow!]!
+}
+
 type Intake {
   ok: Boolean!
   id: String
@@ -204,6 +229,14 @@ input SwitchTaskInput {
   description: String
   parentId: String
   from: String
+}
+
+input EditTaskInput {
+  id: String!
+  title: String
+  description: String
+  mode: String
+  repos: String
 }
 
 input StageInput {

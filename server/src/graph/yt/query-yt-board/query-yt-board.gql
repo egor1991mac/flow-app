@@ -1,0 +1,23 @@
+extend type Query {
+  ytBoard(query: String!, limit: Int): YtBoard!
+}
+
+type YtIssue {
+  id: String!
+  summary: String!
+  state: String!
+  assignee: String
+  assigneeLogin: String
+  priority: String
+  type: String
+  project: String
+  updated: Float
+  url: String!
+}
+
+type YtBoard {
+  ok: Boolean!
+  error: String
+  issues: [YtIssue!]!
+  truncated: Boolean!
+}

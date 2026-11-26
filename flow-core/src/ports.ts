@@ -40,10 +40,76 @@ export interface DockerPort {
   readonly lastOutput?: string;
 }
 
+export interface YtIssueRow {
+  id: string;
+  summary: string;
+  state: string;
+  assignee: string;
+  assigneeLogin: string;
+  priority: string;
+  type: string;
+  project: string;
+  updated: number;
+  url: string;
+}
+
+export interface YtSprintRow {
+  id: string;
+  name: string;
+  start: number | null;
+  finish: number | null;
+  archived: boolean;
+}
+
+export interface YtIssuesResult {
+  ok: boolean;
+  error?: string;
+  issues: YtIssueRow[];
+}
+
+export interface YtSprintsResult {
+  ok: boolean;
+  error?: string;
+  sprints: YtSprintRow[];
+}
+
+export interface YtUserRow {
+  login: string;
+  name: string;
+}
+
+export interface YtUsersResult {
+  ok: boolean;
+  error?: string;
+  users: YtUserRow[];
+}
+
+export interface YtCreateIssueInput {
+  project: string;
+  summary: string;
+  description: string;
+  type: string;
+  parentId: string;
+  assignee?: string | null;
+  estimation?: string | null;
+}
+
+export interface YtCreateIssueResult {
+  ok: boolean;
+  error?: string;
+  id?: string;
+  url?: string;
+  warnings: string[];
+}
+
 export interface YouTrackPort {
   issueView(id: string): unknown;
   issueParents(id: string): string[];
   issueSubtaskLinks?(id: string): { inward: string[]; outward: string[]; relates: string[] };
+  issues(query: string, limit: number): YtIssuesResult;
+  sprints(boardId: string): YtSprintsResult;
+  users?(query: string, limit: number): YtUsersResult;
+  createIssue?(input: YtCreateIssueInput): YtCreateIssueResult;
 }
 
 export interface HostsPort {
@@ -51,6 +117,11 @@ export interface HostsPort {
   resolveHost(host: string): boolean;
   portBusy(port: number): boolean;
   certSan(cert: string): string;
+}
+
+export interface ImagePort {
+  convert(input: string, output: string, quality?: number): boolean;
+  readonly lastError?: string;
 }
 
 export interface SpacePort {
@@ -61,6 +132,8 @@ export interface SpacePort {
   createTerminal(path: string, title: string, command: string): boolean;
   createTab(path: string, url: string): boolean;
   launchAgent(path: string, prompt: string): boolean;
+  launchAgentResult?(path: string, prompt: string): { ok: boolean; error?: string };
+  listAgents?(path: string): Array<{ title: string; state: string }>;
   hideRepo(path: string): boolean;
   closeTerminals(path: string): void;
   closeTabs(path: string): void;
